@@ -1,0 +1,1268 @@
+# Universal Parser Specification
+# JSON Parser (RFC 8259)
+# This is a complete example demonstrating the UPS schema
+
+$schema: "https://universalparser.org/schema/ups/v1.0/ups-schema.json"
+ups_version: "1.0"
+
+# ============================================================================
+# METADATA - Identity and discoverability
+# ============================================================================
+metadata:
+  id: "urn:ups:parser:ietf:json:rfc8259:1.0.0"
+  name: "json-parser"
+  display_name: "JSON Parser (RFC 8259)"
+  version: "1.0.0"
+  status: stable
+
+  category:
+    primary: structured
+    secondary:
+      - text
+      - context-free
+    data_flow: pull
+
+  domain: "data-interchange"
+
+  tags:
+    - json
+    - rfc8259
+    - ecma-404
+    - data-interchange
+    - text
+    - unicode
+    - web
+    - api
+
+  description: |
+    A parser for JSON (JavaScript Object Notation) as defined in RFC 8259.
+    JSON is a lightweight data-interchange format that is easy for humans
+    to read and write and easy for machines to parse and generate.
+
+  long_description: |
+    ## Overview
+
+    JSON (JavaScript Object Notation) is a text format for the serialization
+    of structured data. It is derived from the object literals of JavaScript,
+    as defined in the ECMAScript Programming Language Standard.
+
+    ## Key Features
+
+    - Human-readable text format
+    - Language-independent data representation
+    - Support for basic data types: objects, arrays, strings, numbers, booleans, null
+    - Unicode support (UTF-8 encoding)
+
+    ## Use Cases
+
+    - Web APIs and REST services
+    - Configuration files
+    - Data storage and exchange
+    - Inter-process communication
+
+    ## Compliance
+
+    This specification is fully compliant with:
+    - RFC 8259 (The JavaScript Object Notation Data Interchange Format)
+    - ECMA-404 (The JSON Data Interchange Standard)
+
+  license:
+    spdx: "CC-BY-4.0"
+    url: "https://creativecommons.org/licenses/by/4.0/"
+
+  authors:
+    - name: "Douglas Crockford"
+      organization: "JSON.org"
+      url: "https://www.crockford.com/"
+
+  maintainers:
+    - name: "Universal Parser Platform"
+      email: "specs@universalparser.org"
+      organization: "UPP Working Group"
+
+  references:
+    - type: rfc
+      identifier: "RFC 8259"
+      title: "The JavaScript Object Notation (JSON) Data Interchange Format"
+      url: "https://www.rfc-editor.org/rfc/rfc8259"
+      date: "2017-12"
+      authors: ["T. Bray, Ed."]
+      normative: true
+
+    - type: ecma
+      identifier: "ECMA-404"
+      title: "The JSON Data Interchange Standard"
+      url: "https://www.ecma-international.org/publications-and-standards/standards/ecma-404/"
+      date: "2017-12"
+      normative: true
+
+    - type: url
+      title: "JSON.org"
+      url: "https://www.json.org/"
+      normative: false
+
+    - type: rfc
+      identifier: "RFC 7493"
+      title: "The I-JSON Message Format"
+      url: "https://www.rfc-editor.org/rfc/rfc7493"
+      normative: false
+
+  related:
+    - spec_id: "urn:ups:parser:json5:1.0.0"
+      relationship: alternative
+      description: "JSON5 is an extension that allows comments and trailing commas"
+
+    - spec_id: "urn:ups:parser:json-schema:draft-2020-12"
+      relationship: compatible
+      description: "JSON Schema validates JSON documents"
+
+  created_at: "2025-01-15T00:00:00Z"
+  updated_at: "2025-01-15T00:00:00Z"
+
+# ============================================================================
+# PARSER DEFINITION - Core parsing behavior
+# ============================================================================
+parser:
+  # --------------------------------------------------------------------------
+  # INPUT DEFINITION
+  # --------------------------------------------------------------------------
+  input:
+    format:
+      type: abnf
+      variant: rfc5234
+      grammar: |
+        ; RFC 8259 - JSON Grammar in ABNF
+
+        JSON-text = ws value ws
+
+        ; Structural characters
+        begin-array     = ws %x5B ws  ; [ left square bracket
+        begin-object    = ws %x7B ws  ; { left curly bracket
+        end-array       = ws %x5D ws  ; ] right square bracket
+        end-object      = ws %x7D ws  ; } right curly bracket
+        name-separator  = ws %x3A ws  ; : colon
+        value-separator = ws %x2C ws  ; , comma
+
+        ws = *(
+                %x20 /              ; Space
+                %x09 /              ; Horizontal tab
+                %x0A /              ; Line feed or New line
+                %x0D )              ; Carriage return
+
+        ; Values
+        value = false / null / true / object / array / number / string
+
+        false = %x66.61.6c.73.65   ; false
+        null  = %x6e.75.6c.6c      ; null
+        true  = %x74.72.75.65      ; true
+
+        ; Objects
+        object = begin-object [ member *( value-separator member ) ] end-object
+        member = string name-separator value
+
+        ; Arrays
+        array = begin-array [ value *( value-separator value ) ] end-array
+
+        ; Numbers
+        number = [ minus ] int [ frac ] [ exp ]
+        decimal-point = %x2E       ; .
+        digit1-9 = %x31-39         ; 1-9
+        e = %x65 / %x45            ; e E
+        exp = e [ minus / plus ] 1*DIGIT
+        frac = decimal-point 1*DIGIT
+        int = zero / ( digit1-9 *DIGIT )
+        minus = %x2D               ; -
+        plus = %x2B                ; +
+        zero = %x30                ; 0
+
+        ; Strings
+        string = quotation-mark *char quotation-mark
+
+        char = unescaped /
+            escape (
+                %x22 /          ; "    quotation mark  U+0022
+                %x5C /          ; \    reverse solidus U+005C
+                %x2F /          ; /    solidus         U+002F
+                %x62 /          ; b    backspace       U+0008
+                %x66 /          ; f    form feed       U+000C
+                %x6E /          ; n    line feed       U+000A
+                %x72 /          ; r    carriage return U+000D
+                %x74 /          ; t    tab             U+0009
+                %x75 4HEXDIG )  ; uXXXX                U+XXXX
+
+        escape = %x5C              ; \
+        quotation-mark = %x22      ; "
+        unescaped = %x20-21 / %x23-5B / %x5D-10FFFF
+
+      entry_rule: JSON-text
+
+    encoding:
+      default: utf-8
+      supported:
+        - utf-8
+        - utf-16le
+        - utf-16be
+        - utf-32le
+        - utf-32be
+      bom: optional
+      newline: any
+      null_handling: escape
+
+    streaming:
+      supported: true
+      mode: chunked
+      chunk_boundaries: any
+      minimum_chunk_size: 1
+      buffering:
+        required: false
+        max_buffer_size: 65536
+        lookahead: 1
+      backtracking: false
+      resumable: true
+
+    constraints:
+      max_size: unlimited
+      max_depth: 1000
+      max_width: unlimited
+      max_string_length: unlimited
+      max_number_magnitude: 1.7976931348623157e+308
+      max_array_length: unlimited
+      max_object_keys: unlimited
+
+  # --------------------------------------------------------------------------
+  # OUTPUT DEFINITION
+  # --------------------------------------------------------------------------
+  output:
+    primary:
+      type: ast
+      schema_type: json-schema
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $id: "https://universalparser.org/schema/json-ast/v1.0"
+        title: "JSON AST Schema"
+        description: "Abstract Syntax Tree representation of parsed JSON"
+
+        $ref: "#/$defs/JsonValue"
+
+        $defs:
+          JsonValue:
+            oneOf:
+              - $ref: "#/$defs/JsonObject"
+              - $ref: "#/$defs/JsonArray"
+              - $ref: "#/$defs/JsonString"
+              - $ref: "#/$defs/JsonNumber"
+              - $ref: "#/$defs/JsonBoolean"
+              - $ref: "#/$defs/JsonNull"
+
+          JsonObject:
+            type: object
+            required: [type, members]
+            properties:
+              type:
+                const: object
+              members:
+                type: array
+                items:
+                  $ref: "#/$defs/JsonMember"
+              position:
+                $ref: "#/$defs/Position"
+
+          JsonMember:
+            type: object
+            required: [key, value]
+            properties:
+              key:
+                type: string
+              keyPosition:
+                $ref: "#/$defs/Position"
+              value:
+                $ref: "#/$defs/JsonValue"
+
+          JsonArray:
+            type: object
+            required: [type, elements]
+            properties:
+              type:
+                const: array
+              elements:
+                type: array
+                items:
+                  $ref: "#/$defs/JsonValue"
+              position:
+                $ref: "#/$defs/Position"
+
+          JsonString:
+            type: object
+            required: [type, value]
+            properties:
+              type:
+                const: string
+              value:
+                type: string
+              raw:
+                type: string
+                description: "Original string with escape sequences"
+              position:
+                $ref: "#/$defs/Position"
+
+          JsonNumber:
+            type: object
+            required: [type, value]
+            properties:
+              type:
+                const: number
+              value:
+                type: number
+              raw:
+                type: string
+                description: "Original number as string"
+              isInteger:
+                type: boolean
+              position:
+                $ref: "#/$defs/Position"
+
+          JsonBoolean:
+            type: object
+            required: [type, value]
+            properties:
+              type:
+                const: boolean
+              value:
+                type: boolean
+              position:
+                $ref: "#/$defs/Position"
+
+          JsonNull:
+            type: object
+            required: [type]
+            properties:
+              type:
+                const: "null"
+              position:
+                $ref: "#/$defs/Position"
+
+          Position:
+            type: object
+            properties:
+              offset:
+                type: integer
+                minimum: 0
+              line:
+                type: integer
+                minimum: 1
+              column:
+                type: integer
+                minimum: 1
+              endOffset:
+                type: integer
+              endLine:
+                type: integer
+              endColumn:
+                type: integer
+
+      preserves:
+        - positions
+
+    alternatives:
+      - type: object
+        schema_type: json-schema
+        schema:
+          description: "Direct deserialization to native object"
+
+      - type: events
+        schema_type: json-schema
+        schema:
+          description: "SAX-style event stream"
+
+      - type: tokens
+        schema_type: json-schema
+        schema:
+          description: "Lexical token stream"
+
+    errors:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: object
+        required: [code, message, position]
+        properties:
+          code:
+            type: string
+            pattern: "^JSON[EW][0-9]{3}$"
+          message:
+            type: string
+          severity:
+            type: string
+            enum: [error, warning]
+          position:
+            type: object
+            required: [offset, line, column]
+            properties:
+              offset:
+                type: integer
+                minimum: 0
+              line:
+                type: integer
+                minimum: 1
+              column:
+                type: integer
+                minimum: 1
+          context:
+            type: string
+            description: "Snippet of input around error"
+          expected:
+            type: array
+            items:
+              type: string
+            description: "List of expected tokens"
+
+      codes:
+        - code: JSONE001
+          message: "Unexpected token"
+          severity: error
+          category: syntax
+          recoverable: true
+
+        - code: JSONE002
+          message: "Unterminated string"
+          severity: error
+          category: syntax
+          recoverable: false
+
+        - code: JSONE003
+          message: "Invalid escape sequence"
+          severity: error
+          category: syntax
+          recoverable: true
+
+        - code: JSONE004
+          message: "Invalid number format"
+          severity: error
+          category: syntax
+          recoverable: true
+
+        - code: JSONE005
+          message: "Unexpected end of input"
+          severity: error
+          category: syntax
+          recoverable: false
+
+        - code: JSONE006
+          message: "Invalid Unicode escape"
+          severity: error
+          category: syntax
+          recoverable: true
+
+        - code: JSONE007
+          message: "Duplicate key in object"
+          severity: error
+          category: semantic
+          recoverable: true
+
+        - code: JSONE008
+          message: "Maximum depth exceeded"
+          severity: error
+          category: limit
+          recoverable: false
+
+        - code: JSONE009
+          message: "Invalid UTF-8 encoding"
+          severity: error
+          category: encoding
+          recoverable: false
+
+        - code: JSONE010
+          message: "Control character in string"
+          severity: error
+          category: syntax
+          recoverable: true
+
+        - code: JSONW001
+          message: "Trailing comma"
+          severity: warning
+          category: style
+          recoverable: true
+
+        - code: JSONW002
+          message: "Number precision loss"
+          severity: warning
+          category: semantic
+          recoverable: true
+
+      includes_position: true
+      includes_context: true
+      includes_suggestions: true
+
+    events:
+      events:
+        - name: document_start
+          data:
+            type: object
+            properties: {}
+
+        - name: document_end
+          data:
+            type: object
+            properties: {}
+
+        - name: object_start
+          data:
+            type: object
+            properties:
+              depth:
+                type: integer
+
+        - name: object_end
+          data:
+            type: object
+            properties: {}
+
+        - name: object_key
+          data:
+            type: object
+            properties:
+              key:
+                type: string
+
+        - name: array_start
+          data:
+            type: object
+            properties:
+              depth:
+                type: integer
+
+        - name: array_end
+          data:
+            type: object
+            properties: {}
+
+        - name: value_string
+          data:
+            type: object
+            properties:
+              value:
+                type: string
+
+        - name: value_number
+          data:
+            type: object
+            properties:
+              value:
+                type: number
+              raw:
+                type: string
+
+        - name: value_boolean
+          data:
+            type: object
+            properties:
+              value:
+                type: boolean
+
+        - name: value_null
+          data:
+            type: object
+            properties: {}
+
+      ordering: depth-first
+
+    partial_results: true
+
+  # --------------------------------------------------------------------------
+  # PARSER MODES
+  # --------------------------------------------------------------------------
+  modes:
+    - id: strict
+      name: "Strict Mode"
+      description: |
+        Strictly follows RFC 8259. Rejects any input that deviates from the
+        standard, including trailing commas, comments, and single quotes.
+      default: true
+      options:
+        allow_comments: false
+        allow_trailing_comma: false
+        allow_single_quotes: false
+        allow_unquoted_keys: false
+        allow_nan_infinity: false
+        allow_leading_zeros: false
+        duplicate_key_handling: error
+
+    - id: lenient
+      name: "Lenient Mode"
+      description: |
+        Accepts common extensions like comments and trailing commas.
+        Useful for parsing configuration files and human-edited JSON.
+      options:
+        allow_comments: true
+        allow_trailing_comma: true
+        allow_single_quotes: false
+        allow_unquoted_keys: false
+        allow_nan_infinity: false
+        allow_leading_zeros: false
+        duplicate_key_handling: last
+
+    - id: json5
+      name: "JSON5 Compatible Mode"
+      description: |
+        Compatible with JSON5 specification. Allows most JSON5 extensions.
+      options:
+        allow_comments: true
+        allow_trailing_comma: true
+        allow_single_quotes: true
+        allow_unquoted_keys: true
+        allow_nan_infinity: true
+        allow_leading_zeros: false
+        duplicate_key_handling: last
+
+    - id: streaming
+      name: "Streaming Mode"
+      description: |
+        Optimized for streaming large files. May sacrifice some features
+        for better memory efficiency and throughput.
+      options:
+        allow_comments: false
+        allow_trailing_comma: false
+        buffer_size: 65536
+        emit_events: true
+        build_ast: false
+
+  # --------------------------------------------------------------------------
+  # PARSER FEATURES
+  # --------------------------------------------------------------------------
+  features:
+    validation:
+      schema_validation: true
+      semantic_validation: true
+      custom_validators: true
+
+    transformation:
+      normalization: true
+      canonicalization: true
+      pretty_print: true
+      minification: true
+
+    querying:
+      jsonpath: true
+      jmespath: true
+      css_selectors: false
+
+    modification:
+      mutable_ast: true
+      incremental_updates: false
+      serialization: true
+
+    interop:
+      - yaml
+      - xml
+      - msgpack
+      - cbor
+      - csv
+
+  # --------------------------------------------------------------------------
+  # ERROR HANDLING
+  # --------------------------------------------------------------------------
+  error_handling:
+    strategy: configurable
+    recovery_strategies:
+      - skip-token
+      - sync-to-delimiter
+    max_errors: 100
+    error_tolerance: 0
+
+# ============================================================================
+# CONFORMANCE SUITE
+# ============================================================================
+conformance:
+  version: "1.0.0"
+
+  # Import external test suites
+  imports:
+    - url: "https://github.com/nst/JSONTestSuite"
+      type: json-test-suite
+      version: "master"
+      filter:
+        include:
+          - "y_*"  # Valid inputs
+          - "n_*"  # Invalid inputs
+        exclude:
+          - "i_*"  # Implementation-defined (separate handling)
+
+    - url: "https://github.com/json-schema-org/JSON-Schema-Test-Suite"
+      type: json-schema-test-suite
+      filter:
+        include:
+          - "draft2020-12/core/**"
+
+  # Test groups organized by category
+  test_groups:
+    - id: valid-primitives
+      name: "Valid Primitive Values"
+      description: "Tests for parsing valid JSON primitive values"
+      tests:
+        - id: valid-null
+          name: "Null value"
+          category: valid
+          priority: critical
+          input:
+            inline: "null"
+          expected:
+            success:
+              ast:
+                type: "null"
+
+        - id: valid-true
+          name: "Boolean true"
+          category: valid
+          priority: critical
+          input:
+            inline: "true"
+          expected:
+            success:
+              ast:
+                type: boolean
+                value: true
+
+        - id: valid-false
+          name: "Boolean false"
+          category: valid
+          priority: critical
+          input:
+            inline: "false"
+          expected:
+            success:
+              ast:
+                type: boolean
+                value: false
+
+        - id: valid-string-empty
+          name: "Empty string"
+          category: valid
+          priority: critical
+          input:
+            inline: '""'
+          expected:
+            success:
+              ast:
+                type: string
+                value: ""
+
+        - id: valid-string-simple
+          name: "Simple string"
+          category: valid
+          priority: critical
+          input:
+            inline: '"hello"'
+          expected:
+            success:
+              ast:
+                type: string
+                value: "hello"
+
+        - id: valid-number-integer
+          name: "Integer number"
+          category: valid
+          priority: critical
+          input:
+            inline: "42"
+          expected:
+            success:
+              ast:
+                type: number
+                value: 42
+
+        - id: valid-number-negative
+          name: "Negative number"
+          category: valid
+          priority: critical
+          input:
+            inline: "-42"
+          expected:
+            success:
+              ast:
+                type: number
+                value: -42
+
+        - id: valid-number-float
+          name: "Floating point number"
+          category: valid
+          priority: critical
+          input:
+            inline: "3.14159"
+          expected:
+            success:
+              ast:
+                type: number
+                value: 3.14159
+
+        - id: valid-number-exponent
+          name: "Number with exponent"
+          category: valid
+          priority: critical
+          input:
+            inline: "1.23e10"
+          expected:
+            success:
+              ast:
+                type: number
+                value: 1.23e10
+
+    - id: valid-structures
+      name: "Valid Structures"
+      description: "Tests for parsing valid JSON objects and arrays"
+      tests:
+        - id: valid-object-empty
+          name: "Empty object"
+          category: valid
+          priority: critical
+          input:
+            inline: "{}"
+          expected:
+            success:
+              ast:
+                type: object
+                members: []
+
+        - id: valid-object-simple
+          name: "Simple object"
+          category: valid
+          priority: critical
+          input:
+            inline: '{"key": "value"}'
+          expected:
+            success:
+              ast:
+                type: object
+                members:
+                  - key: "key"
+                    value:
+                      type: string
+                      value: "value"
+
+        - id: valid-array-empty
+          name: "Empty array"
+          category: valid
+          priority: critical
+          input:
+            inline: "[]"
+          expected:
+            success:
+              ast:
+                type: array
+                elements: []
+
+        - id: valid-array-simple
+          name: "Simple array"
+          category: valid
+          priority: critical
+          input:
+            inline: "[1, 2, 3]"
+          expected:
+            success:
+              ast:
+                type: array
+                elements:
+                  - type: number
+                    value: 1
+                  - type: number
+                    value: 2
+                  - type: number
+                    value: 3
+
+        - id: valid-nested-deep
+          name: "Deeply nested structure"
+          category: valid
+          priority: high
+          input:
+            inline: '{"a": {"b": {"c": [1, 2, {"d": true}]}}}'
+          expected:
+            success:
+              properties:
+                is_valid: true
+
+    - id: invalid-syntax
+      name: "Invalid Syntax"
+      description: "Tests for rejecting syntactically invalid JSON"
+      tests:
+        - id: invalid-trailing-comma-object
+          name: "Trailing comma in object"
+          category: invalid
+          priority: critical
+          input:
+            inline: '{"key": "value",}'
+          expected:
+            error:
+              code: JSONE001
+          mode: strict
+
+        - id: invalid-trailing-comma-array
+          name: "Trailing comma in array"
+          category: invalid
+          priority: critical
+          input:
+            inline: "[1, 2, 3,]"
+          expected:
+            error:
+              code: JSONE001
+          mode: strict
+
+        - id: invalid-single-quotes
+          name: "Single-quoted string"
+          category: invalid
+          priority: high
+          input:
+            inline: "'hello'"
+          expected:
+            error:
+              code: JSONE001
+          mode: strict
+
+        - id: invalid-unquoted-key
+          name: "Unquoted object key"
+          category: invalid
+          priority: high
+          input:
+            inline: "{key: \"value\"}"
+          expected:
+            error:
+              code: JSONE001
+          mode: strict
+
+        - id: invalid-leading-zero
+          name: "Leading zero in number"
+          category: invalid
+          priority: high
+          input:
+            inline: "01"
+          expected:
+            error:
+              code: JSONE004
+          mode: strict
+
+        - id: invalid-plus-sign
+          name: "Plus sign before number"
+          category: invalid
+          priority: high
+          input:
+            inline: "+1"
+          expected:
+            error:
+              code: JSONE001
+          mode: strict
+
+    - id: edge-cases
+      name: "Edge Cases"
+      description: "Tests for handling edge cases and unusual inputs"
+      tests:
+        - id: edge-unicode-escape
+          name: "Unicode escape sequences"
+          category: edge-case
+          priority: high
+          input:
+            inline: '"\\u0041\\u0042\\u0043"'
+          expected:
+            success:
+              ast:
+                type: string
+                value: "ABC"
+
+        - id: edge-surrogate-pair
+          name: "Surrogate pair for emoji"
+          category: edge-case
+          priority: high
+          input:
+            inline: '"\\uD83D\\uDE00"'
+          expected:
+            success:
+              ast:
+                type: string
+                value: "😀"
+
+        - id: edge-large-number
+          name: "Very large number"
+          category: edge-case
+          priority: medium
+          input:
+            inline: "1e308"
+          expected:
+            success:
+              ast:
+                type: number
+
+        - id: edge-small-number
+          name: "Very small number"
+          category: edge-case
+          priority: medium
+          input:
+            inline: "1e-308"
+          expected:
+            success:
+              ast:
+                type: number
+
+        - id: edge-whitespace
+          name: "Various whitespace"
+          category: edge-case
+          priority: medium
+          input:
+            inline: " \t\n\r{ \t\n\r\"key\" \t\n\r: \t\n\r\"value\" \t\n\r} \t\n\r"
+          expected:
+            success:
+              properties:
+                is_valid: true
+
+    - id: security
+      name: "Security Tests"
+      description: "Tests for security vulnerabilities"
+      tests:
+        - id: security-deep-nesting
+          name: "Stack overflow via deep nesting"
+          category: security
+          priority: critical
+          input:
+            generator:
+              type: repeat
+              params:
+                pattern: "["
+                count: 10000
+                suffix_pattern: "]"
+                suffix_count: 10000
+          expected:
+            either:
+              - error:
+                  code: JSONE008
+              - success:
+                  properties:
+                    is_valid: true
+
+        - id: security-large-string
+          name: "Memory exhaustion via large string"
+          category: security
+          priority: critical
+          input:
+            generator:
+              type: custom
+              params:
+                type: large_string
+                size_mb: 100
+          expected:
+            either:
+              - error:
+                  code: JSONE008
+              - success:
+                  properties:
+                    is_valid: true
+
+        - id: security-many-keys
+          name: "Hash collision attack"
+          category: security
+          priority: high
+          input:
+            generator:
+              type: custom
+              params:
+                type: hash_collision_keys
+                count: 100000
+          expected:
+            either:
+              - error: {}
+              - success: {}
+
+  # Property-based tests
+  property_tests:
+    - id: roundtrip
+      name: "Parse-serialize roundtrip"
+      property: roundtrip
+      description: |
+        For any valid JSON, parse(serialize(parse(input))) should produce
+        semantically equivalent output to parse(input).
+      iterations: 100000
+      seed: 42
+      shrinking: true
+
+    - id: deterministic
+      name: "Deterministic parsing"
+      property: deterministic
+      description: |
+        Parsing the same input twice should always produce identical results.
+      iterations: 10000
+
+    - id: no-crash
+      name: "No crash on any input"
+      property: no-crash
+      description: |
+        The parser should never crash, regardless of input. It should either
+        return a valid AST or a well-formed error.
+      iterations: 1000000
+      generator:
+        type: random
+        params:
+          include_invalid: true
+          max_size: 10000
+
+  # Fuzzing configuration
+  fuzzing:
+    enabled: true
+    min_iterations: 1000000
+    timeout_seconds: 3600
+
+    corpus:
+      - "./test-corpus/json/"
+      - "https://github.com/dvyukov/go-fuzz-corpus/tree/master/json"
+      - "https://github.com/nst/JSONTestSuite/tree/master/test_parsing"
+
+    dictionary:
+      - "true"
+      - "false"
+      - "null"
+      - '\"'
+      - '\\'
+      - "\\u"
+      - "\\n"
+      - "\\r"
+      - "\\t"
+      - "{"
+      - "}"
+      - "["
+      - "]"
+      - ":"
+      - ","
+      - "0"
+      - "-"
+      - "."
+      - "e"
+      - "E"
+      - "\\u0000"
+      - "\\uD800"
+      - "\\uDFFF"
+
+    strategies:
+      - mutation
+      - grammar-based
+      - coverage-guided
+
+    targets:
+      - crash
+      - hang
+      - memory
+      - undefined-behavior
+
+  # Benchmark cases
+  benchmarks:
+    - id: bench-small-object
+      name: "Small object parsing"
+      category: throughput
+      input:
+        file: "./benchmarks/small-object.json"
+      iterations: 1000000
+      warmup_iterations: 10000
+      expected_metrics:
+        min_throughput_mbps: 500
+
+    - id: bench-large-array
+      name: "Large array parsing"
+      category: throughput
+      input:
+        file: "./benchmarks/large-array.json"
+      iterations: 1000
+      warmup_iterations: 100
+      expected_metrics:
+        min_throughput_mbps: 200
+
+    - id: bench-deep-nesting
+      name: "Deep nesting performance"
+      category: latency
+      input:
+        generator:
+          type: repeat
+          params:
+            pattern: '{"a":'
+            count: 100
+            suffix_pattern: "null"
+            suffix_count: 1
+            closing_pattern: "}"
+            closing_count: 100
+      iterations: 10000
+      expected_metrics:
+        max_latency_us: 1000
+
+    - id: bench-unicode-heavy
+      name: "Unicode-heavy content"
+      category: throughput
+      input:
+        file: "./benchmarks/unicode-heavy.json"
+      iterations: 10000
+      expected_metrics:
+        min_throughput_mbps: 100
+
+# ============================================================================
+# QUALITY REQUIREMENTS
+# ============================================================================
+quality:
+  conformance:
+    minimum_level: level_2
+    required_tests:
+      - valid-null
+      - valid-true
+      - valid-false
+      - valid-object-empty
+      - valid-array-empty
+    required_categories:
+      - valid
+      - invalid
+      - edge-case
+      - security
+
+  performance:
+    throughput:
+      minimum_mbps: 100
+      target_mbps: 500
+
+    latency:
+      p50_max_us: 100
+      p99_max_us: 1000
+      p999_max_us: 10000
+
+    memory:
+      max_multiplier: 3
+      max_absolute_mb: 1024
+
+    startup:
+      max_cold_start_ms: 100
+      max_warm_start_ms: 10
+
+  security:
+    vulnerability_tolerance:
+      critical: 0
+      high: 0
+      medium: 2
+      low: 5
+
+    required_protections:
+      - stack-overflow-protection
+      - dos-protection
+      - memory-limit-protection
+
+    forbidden_patterns:
+      - "eval("
+      - "Function("
+
+  maintainability:
+    documentation: full
+    test_coverage_percent: 90
+    max_complexity: 15
+
+# ============================================================================
+# EXTENSIONS
+# ============================================================================
+extensions:
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories:
+        - throughput
+        - conformance
+        - security
+
+    ai_testing:
+      enabled: true
+      provider: "claude"
+      edge_case_generation: true

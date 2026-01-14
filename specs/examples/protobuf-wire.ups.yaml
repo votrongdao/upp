@@ -1,0 +1,259 @@
+# Universal Parser Specification
+# Protocol Buffers Wire Format
+# Example demonstrating BINARY format parsing
+
+$schema: "https://universalparser.org/schema/ups/v1.0/ups-schema.json"
+ups_version: "1.0"
+
+metadata:
+  id: "urn:ups:parser:google:protobuf-wire:3.0.0"
+  name: "protobuf-wire-parser"
+  display_name: "Protocol Buffers Wire Format Parser"
+  version: "3.0.0"
+  status: stable
+
+  category:
+    primary: binary
+    secondary:
+      - structured
+    data_flow: pull
+
+  domain: "binary-format"
+  tags:
+    - protobuf
+    - binary
+    - serialization
+    - grpc
+    - google
+
+  description: |
+    Parser for Protocol Buffers wire format. Protocol Buffers is Google's
+    language-neutral, platform-neutral, extensible mechanism for serializing
+    structured data.
+
+  license:
+    spdx: "Apache-2.0"
+
+  authors:
+    - name: "Google"
+      url: "https://developers.google.com/protocol-buffers"
+
+  references:
+    - type: url
+      title: "Protocol Buffers Encoding"
+      url: "https://developers.google.com/protocol-buffers/docs/encoding"
+      normative: true
+
+parser:
+  input:
+    format:
+      type: custom
+      binary_structure:
+        endianness: little
+        variable_length: true
+
+        fields:
+          - name: message
+            type: struct
+            doc: "A protobuf message is a sequence of fields"
+            nested:
+              fields:
+                - name: field
+                  type: struct
+                  count: "*"
+                  doc: "Each field in the message"
+                  nested:
+                    fields:
+                      - name: tag
+                        type: varint
+                        doc: "Field number and wire type encoded together"
+
+                      - name: value
+                        type: union
+                        doc: "Value depends on wire type (tag & 0x07)"
+                        condition: "tag & 0x07"
+                        nested:
+                          fields:
+                            # Wire type 0: Varint
+                            - name: varint_value
+                              type: varint
+                              condition: "(tag & 0x07) == 0"
+
+                            # Wire type 1: 64-bit
+                            - name: fixed64_value
+                              type: uint64
+                              condition: "(tag & 0x07) == 1"
+
+                            # Wire type 2: Length-delimited
+                            - name: length_delimited
+                              type: struct
+                              condition: "(tag & 0x07) == 2"
+                              nested:
+                                fields:
+                                  - name: length
+                                    type: varint
+                                  - name: data
+                                    type: bytes
+                                    size: "length"
+
+                            # Wire type 5: 32-bit
+                            - name: fixed32_value
+                              type: uint32
+                              condition: "(tag & 0x07) == 5"
+
+          - name: varint
+            type: custom
+            doc: |
+              Variable-length integer encoding. Each byte has MSB as
+              continuation flag. Supports up to 10 bytes (64-bit values).
+
+    encoding:
+      default: binary
+
+    streaming:
+      supported: true
+      mode: chunked
+      chunk_boundaries: message
+      buffering:
+        required: true
+        max_buffer_size: 1048576
+
+    constraints:
+      max_size: unlimited
+      max_depth: 100
+
+  output:
+    primary:
+      type: ast
+      schema_type: json-schema
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: object
+        required: [fields]
+        properties:
+          fields:
+            type: array
+            items:
+              type: object
+              required: [fieldNumber, wireType, value]
+              properties:
+                fieldNumber:
+                  type: integer
+                  minimum: 1
+                wireType:
+                  type: integer
+                  enum: [0, 1, 2, 5]
+                wireTypeName:
+                  type: string
+                  enum: [varint, fixed64, length_delimited, fixed32]
+                value:
+                  oneOf:
+                    - type: integer
+                    - type: number
+                    - type: string
+                    - type: object
+                rawBytes:
+                  type: string
+                  description: "Hex-encoded raw bytes"
+
+    errors:
+      codes:
+        - code: PB001
+          message: "Invalid varint encoding"
+          severity: error
+        - code: PB002
+          message: "Unknown wire type"
+          severity: error
+        - code: PB003
+          message: "Truncated message"
+          severity: error
+        - code: PB004
+          message: "Varint overflow"
+          severity: error
+
+  modes:
+    - id: raw
+      name: "Raw Mode"
+      description: "Parse without schema, return raw field numbers and values"
+      default: true
+
+    - id: schema
+      name: "Schema Mode"
+      description: "Parse with .proto schema for typed decoding"
+      options:
+        schema_file: null
+        unknown_field_handling: preserve
+
+  features:
+    validation:
+      schema_validation: true
+
+    transformation:
+      normalization: false
+      serialization: true
+
+    interop:
+      - json
+      - msgpack
+
+conformance:
+  version: "1.0.0"
+
+  test_vectors:
+    - id: simple-varint
+      name: "Simple varint field"
+      category: valid
+      input:
+        inline_hex: "089601"
+      expected:
+        success:
+          ast:
+            fields:
+              - fieldNumber: 1
+                wireType: 0
+                value: 150
+
+    - id: simple-string
+      name: "Simple string field"
+      category: valid
+      input:
+        inline_hex: "120774657374696e67"
+      expected:
+        success:
+          ast:
+            fields:
+              - fieldNumber: 2
+                wireType: 2
+                value: "testing"
+
+    - id: embedded-message
+      name: "Embedded message"
+      category: valid
+      input:
+        inline_hex: "1a03089601"
+      expected:
+        success:
+          properties:
+            is_valid: true
+
+  property_tests:
+    - id: roundtrip
+      name: "Encode-decode roundtrip"
+      property: roundtrip
+      iterations: 10000
+
+quality:
+  performance:
+    throughput:
+      minimum_mbps: 500
+      target_mbps: 2000
+    memory:
+      max_multiplier: 2
+
+  security:
+    vulnerability_tolerance:
+      critical: 0
+      high: 0
+    required_protections:
+      - dos-protection
+      - memory-limit-protection

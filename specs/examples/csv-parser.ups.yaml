@@ -1,0 +1,344 @@
+# Universal Parser Specification
+# CSV Parser (RFC 4180)
+# Example demonstrating TABULAR/STREAMING format
+
+$schema: "https://universalparser.org/schema/ups/v1.0/ups-schema.json"
+ups_version: "1.0"
+
+metadata:
+  id: "urn:ups:parser:ietf:csv:rfc4180:1.0.0"
+  name: "csv-parser"
+  display_name: "CSV Parser (RFC 4180)"
+  version: "1.0.0"
+  status: stable
+
+  category:
+    primary: text
+    secondary:
+      - streaming
+    data_flow: both
+
+  domain: "data-interchange"
+  tags:
+    - csv
+    - rfc4180
+    - tabular
+    - spreadsheet
+    - data
+
+  description: |
+    Parser for Comma-Separated Values (CSV) files as defined in RFC 4180.
+    CSV is a common format for tabular data exchange.
+
+  license:
+    spdx: "CC-BY-4.0"
+
+  references:
+    - type: rfc
+      identifier: "RFC 4180"
+      title: "Common Format and MIME Type for CSV Files"
+      url: "https://www.rfc-editor.org/rfc/rfc4180"
+      normative: true
+
+parser:
+  input:
+    format:
+      type: abnf
+      grammar: |
+        file = [header CRLF] record *(CRLF record) [CRLF]
+
+        header = name *(COMMA name)
+        record = field *(COMMA field)
+
+        name = field
+        field = (escaped / non-escaped)
+
+        escaped = DQUOTE *(TEXTDATA / COMMA / CR / LF / 2DQUOTE) DQUOTE
+        non-escaped = *TEXTDATA
+
+        COMMA = %x2C
+        CR = %x0D
+        LF = %x0A
+        CRLF = CR LF
+        DQUOTE = %x22
+        TEXTDATA = %x20-21 / %x23-2B / %x2D-7E
+
+      entry_rule: file
+
+    encoding:
+      default: utf-8
+      supported:
+        - utf-8
+        - utf-16
+        - iso-8859-1
+        - windows-1252
+      bom: detect
+      newline: any
+
+    streaming:
+      supported: true
+      mode: chunked
+      chunk_boundaries: line
+      minimum_chunk_size: 1
+      buffering:
+        required: false
+      resumable: true
+
+    constraints:
+      max_size: unlimited
+      max_depth: 1
+
+  output:
+    primary:
+      type: ast
+      schema_type: json-schema
+      schema:
+        type: object
+        required: [records]
+        properties:
+          headers:
+            type: array
+            items:
+              type: string
+            description: "Column headers if present"
+          hasHeaders:
+            type: boolean
+          records:
+            type: array
+            items:
+              oneOf:
+                - type: array
+                  items:
+                    type: string
+                  description: "Row as array of values"
+                - type: object
+                  additionalProperties:
+                    type: string
+                  description: "Row as object with header keys"
+          rowCount:
+            type: integer
+          columnCount:
+            type: integer
+
+    alternatives:
+      - type: events
+        schema_type: json-schema
+        schema:
+          description: "Row-by-row event stream"
+
+    errors:
+      codes:
+        - code: CSV001
+          message: "Unclosed quoted field"
+          severity: error
+        - code: CSV002
+          message: "Invalid character in unquoted field"
+          severity: error
+        - code: CSV003
+          message: "Inconsistent column count"
+          severity: warning
+        - code: CSV004
+          message: "Empty file"
+          severity: warning
+        - code: CSV005
+          message: "Invalid UTF-8 sequence"
+          severity: error
+
+    events:
+      events:
+        - name: file_start
+          data: {}
+        - name: headers
+          data:
+            type: object
+            properties:
+              columns:
+                type: array
+                items:
+                  type: string
+        - name: row
+          data:
+            type: object
+            properties:
+              index:
+                type: integer
+              values:
+                type: array
+                items:
+                  type: string
+        - name: file_end
+          data:
+            type: object
+            properties:
+              rowCount:
+                type: integer
+      ordering: document-order
+
+  modes:
+    - id: strict
+      name: "Strict RFC 4180"
+      description: "Strictly follows RFC 4180"
+      default: false
+      options:
+        delimiter: ","
+        quote: '"'
+        escape: '"'
+        newline: crlf
+        has_header: true
+        trim_whitespace: false
+        skip_empty_rows: false
+
+    - id: auto
+      name: "Auto-detect Mode"
+      description: "Auto-detects delimiter and format options"
+      default: true
+      options:
+        delimiter: auto
+        quote: auto
+        newline: auto
+        has_header: auto
+        trim_whitespace: true
+        skip_empty_rows: true
+
+    - id: excel
+      name: "Excel Compatible"
+      description: "Compatible with Microsoft Excel CSV export"
+      options:
+        delimiter: ","
+        quote: '"'
+        newline: crlf
+        encoding: windows-1252
+        has_header: true
+
+    - id: tsv
+      name: "Tab-Separated Values"
+      description: "Parse as TSV"
+      options:
+        delimiter: "\t"
+        quote: '"'
+
+  features:
+    validation:
+      schema_validation: true
+
+    transformation:
+      normalization: true
+      pretty_print: false
+
+    querying:
+      jsonpath: false
+      css_selectors: false
+
+    interop:
+      - json
+      - xlsx
+      - parquet
+
+  error_handling:
+    strategy: configurable
+    recovery_strategies:
+      - skip-token
+    max_errors: 1000
+
+conformance:
+  version: "1.0.0"
+
+  test_vectors:
+    - id: simple-csv
+      name: "Simple CSV"
+      category: valid
+      input:
+        inline: "a,b,c\n1,2,3\n4,5,6"
+      expected:
+        success:
+          ast:
+            headers: ["a", "b", "c"]
+            rowCount: 2
+
+    - id: quoted-fields
+      name: "Quoted fields with commas"
+      category: valid
+      input:
+        inline: 'name,value\n"Smith, John","Hello, World"'
+      expected:
+        success:
+          ast:
+            records:
+              - ["Smith, John", "Hello, World"]
+
+    - id: embedded-quotes
+      name: "Embedded quotes"
+      category: valid
+      input:
+        inline: 'text\n"He said ""Hello"""'
+      expected:
+        success:
+          ast:
+            records:
+              - ['He said "Hello"']
+
+    - id: multiline-field
+      name: "Multiline field"
+      category: valid
+      input:
+        inline: "text\n\"Line 1\nLine 2\""
+      expected:
+        success:
+          properties:
+            is_valid: true
+
+    - id: empty-fields
+      name: "Empty fields"
+      category: valid
+      input:
+        inline: "a,b,c\n,,\n1,,3"
+      expected:
+        success:
+          ast:
+            records:
+              - ["", "", ""]
+              - ["1", "", "3"]
+
+    - id: unclosed-quote
+      name: "Unclosed quote"
+      category: invalid
+      input:
+        inline: 'text\n"unclosed'
+      expected:
+        error:
+          code: CSV001
+
+  property_tests:
+    - id: roundtrip
+      name: "Parse-serialize roundtrip"
+      property: roundtrip
+      iterations: 10000
+
+  benchmarks:
+    - id: large-file
+      name: "Large CSV file"
+      category: throughput
+      input:
+        generator:
+          type: custom
+          params:
+            rows: 1000000
+            columns: 20
+      expected_metrics:
+        min_throughput_mbps: 200
+
+quality:
+  performance:
+    throughput:
+      minimum_mbps: 100
+      target_mbps: 500
+    memory:
+      max_multiplier: 1.5
+
+  security:
+    vulnerability_tolerance:
+      critical: 0
+      high: 0
+    required_protections:
+      - dos-protection
+      - formula-injection-protection
