@@ -524,30 +524,30 @@ conformance:
 
 ```mermaid
 flowchart TB
-    subgraph "📥 Input"
-        RAW[Raw Text/Binary<br/>e.g., '{"name":"John"}']
+    subgraph Input["📥 Input"]
+        RAW["Raw Text/Binary<br/>e.g., JSON data"]
     end
 
-    subgraph "⚙️ Parser"
-        LEXER[1. Lexer<br/>Break into tokens]
-        PARSER[2. Parser<br/>Build structure]
-        VALID[3. Validator<br/>Check rules]
+    subgraph Parser["⚙️ Parser"]
+        LEXER["1. Lexer<br/>Break into tokens"]
+        PARSER2["2. Parser<br/>Build structure"]
+        VALID["3. Validator<br/>Check rules"]
     end
 
-    subgraph "📤 Output"
-        AST[Abstract Syntax Tree<br/>Structured data]
-        ERR[Errors<br/>If invalid input]
+    subgraph Output["📤 Output"]
+        AST["Abstract Syntax Tree<br/>Structured data"]
+        ERR["Errors<br/>If invalid input"]
     end
 
     RAW --> LEXER
-    LEXER --> |"tokens"| PARSER
-    PARSER --> |"tree"| VALID
-    VALID --> |"valid"| AST
-    VALID --> |"invalid"| ERR
+    LEXER -->|tokens| PARSER2
+    PARSER2 -->|tree| VALID
+    VALID -->|valid| AST
+    VALID -->|invalid| ERR
 
     style RAW fill:#e3f2fd
     style LEXER fill:#fff9c4
-    style PARSER fill:#fff9c4
+    style PARSER2 fill:#fff9c4
     style VALID fill:#fff9c4
     style AST fill:#c8e6c9
     style ERR fill:#ffcdd2
@@ -557,23 +557,28 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph "Input"
-        IN["{ \"name\": \"John\" }"]
+    subgraph Input2["Input"]
+        IN["JSON: name=John"]
     end
 
-    subgraph "Tokens"
-        T1["{"]
-        T2["name"]
-        T3[":"]
-        T4["John"]
-        T5["}"]
+    subgraph Tokens["Tokens"]
+        T1["openBrace"]
+        T2["key: name"]
+        T3["colon"]
+        T4["value: John"]
+        T5["closeBrace"]
     end
 
-    subgraph "AST Output"
-        OUT["Object<br/>├── key: name<br/>└── value: John"]
+    subgraph ASTOutput["AST Output"]
+        OUT["Object<br/>key: name<br/>value: John"]
     end
 
-    IN --> T1 --> T2 --> T3 --> T4 --> T5 --> OUT
+    IN --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T5 --> OUT
 
     style IN fill:#e3f2fd
     style OUT fill:#c8e6c9
