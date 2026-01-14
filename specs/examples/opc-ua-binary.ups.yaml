@@ -1,0 +1,953 @@
+# =============================================================================
+# OPC-UA Binary Transport Protocol Parser Specification
+# OPC Foundation Unified Architecture - Binary Encoding (opc.tcp://)
+# =============================================================================
+# This specification defines a parser for OPC-UA Binary messages transmitted
+# over the opc.tcp:// transport layer, enabling industrial automation
+# communication per OPC Foundation specifications.
+# =============================================================================
+
+ups_version: "1.0"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+metadata:
+  id: "urn:ups:parser:opc-ua:binary-transport:1.05.0"
+  name: "opc-ua-binary-transport"
+  version: "1.05.0"
+  description: |
+    OPC-UA Binary Transport Protocol Parser (UA-TCP).
+
+    Implements the OPC-UA binary encoding specification for secure, efficient
+    communication between industrial automation systems. This parser handles:
+
+    - Connection establishment (Hello/Acknowledge)
+    - Secure Channel management (OpenSecureChannel/CloseSecureChannel)
+    - Message chunking and reassembly
+    - Service request/response encoding
+    - Built-in data type serialization
+
+    Target use cases:
+    - SCADA to PLC communication
+    - MES to equipment integration
+    - Edge gateway protocol translation
+    - Industrial IoT data collection
+
+  status: stable
+  domain: "manufacturing-industrial"
+
+  category:
+    primary: "industrial-protocol"
+    secondary: ["binary", "real-time", "secure"]
+    data_flow: push
+
+  tags:
+    - opc-ua
+    - industrial
+    - automation
+    - scada
+    - plc
+    - binary
+    - secure
+    - real-time
+
+  references:
+    - type: standard
+      name: "OPC UA Part 6: Mappings"
+      version: "1.05.03"
+      url: "https://reference.opcfoundation.org/Core/Part6/v105/"
+      description: "OPC-UA Transport Protocol Mappings"
+
+    - type: standard
+      name: "OPC UA Part 4: Services"
+      version: "1.05.03"
+      url: "https://reference.opcfoundation.org/Core/Part4/v105/"
+      description: "OPC-UA Service Definitions"
+
+    - type: certification
+      name: "OPC Foundation Certification"
+      url: "https://opcfoundation.org/certification/"
+
+  authors:
+    - name: "OPC Foundation"
+      organization: "OPC Foundation"
+      role: "standard_owner"
+
+  maintainers:
+    - name: "UPP Industrial Working Group"
+      email: "industrial@upp-registry.org"
+      organization: "UPP Foundation"
+
+  license:
+    type: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+# =============================================================================
+# PARSER DEFINITION
+# =============================================================================
+parser:
+  input:
+    format:
+      type: custom
+      binary_structure:
+        byte_order: little_endian
+        alignment: 1
+
+        # Message Header (all message types)
+        message_header:
+          fields:
+            - name: MessageType
+              type: char[3]
+              description: "HEL, ACK, ERR, MSG, OPN, CLO"
+            - name: IsFinal
+              type: char
+              description: "C=intermediate, F=final, A=abort"
+            - name: MessageSize
+              type: uint32
+              description: "Total message size including header"
+
+        # Message types
+        message_types:
+          # Hello Message (Connection Establishment)
+          HEL:
+            fields:
+              - name: ProtocolVersion
+                type: uint32
+              - name: ReceiveBufferSize
+                type: uint32
+              - name: SendBufferSize
+                type: uint32
+              - name: MaxMessageSize
+                type: uint32
+              - name: MaxChunkCount
+                type: uint32
+              - name: EndpointUrl
+                type: ua_string
+
+          # Acknowledge Message
+          ACK:
+            fields:
+              - name: ProtocolVersion
+                type: uint32
+              - name: ReceiveBufferSize
+                type: uint32
+              - name: SendBufferSize
+                type: uint32
+              - name: MaxMessageSize
+                type: uint32
+              - name: MaxChunkCount
+                type: uint32
+
+          # Error Message
+          ERR:
+            fields:
+              - name: Error
+                type: uint32
+                description: "StatusCode"
+              - name: Reason
+                type: ua_string
+
+          # Secure Channel Message
+          OPN:
+            fields:
+              - name: SecureChannelId
+                type: uint32
+              - name: SecurityPolicyUri
+                type: ua_string
+              - name: SenderCertificate
+                type: ua_byte_string
+              - name: ReceiverCertificateThumbprint
+                type: ua_byte_string
+              - name: SequenceHeader
+                type: sequence_header
+              - name: RequestHeader
+                type: request_header
+              - name: ClientProtocolVersion
+                type: uint32
+              - name: RequestType
+                type: uint32
+                enum: [ISSUE, RENEW]
+              - name: SecurityMode
+                type: uint32
+                enum: [INVALID, NONE, SIGN, SIGN_AND_ENCRYPT]
+              - name: ClientNonce
+                type: ua_byte_string
+              - name: RequestedLifetime
+                type: uint32
+
+          # Close Secure Channel
+          CLO:
+            fields:
+              - name: SecureChannelId
+                type: uint32
+              - name: TokenId
+                type: uint32
+              - name: SequenceHeader
+                type: sequence_header
+              - name: RequestHeader
+                type: request_header
+
+          # Service Message (Generic)
+          MSG:
+            fields:
+              - name: SecureChannelId
+                type: uint32
+              - name: TokenId
+                type: uint32
+              - name: SequenceHeader
+                type: sequence_header
+              - name: Body
+                type: service_message
+                description: "Encoded service request/response"
+
+        # Common structures
+        structures:
+          sequence_header:
+            fields:
+              - name: SequenceNumber
+                type: uint32
+              - name: RequestId
+                type: uint32
+
+          request_header:
+            fields:
+              - name: AuthenticationToken
+                type: ua_node_id
+              - name: Timestamp
+                type: ua_datetime
+              - name: RequestHandle
+                type: uint32
+              - name: ReturnDiagnostics
+                type: uint32
+              - name: AuditEntryId
+                type: ua_string
+              - name: TimeoutHint
+                type: uint32
+              - name: AdditionalHeader
+                type: ua_extension_object
+
+          response_header:
+            fields:
+              - name: Timestamp
+                type: ua_datetime
+              - name: RequestHandle
+                type: uint32
+              - name: ServiceResult
+                type: uint32
+              - name: ServiceDiagnostics
+                type: ua_diagnostic_info
+              - name: StringTable
+                type: ua_string[]
+              - name: AdditionalHeader
+                type: ua_extension_object
+
+        # OPC-UA Built-in Data Types
+        builtin_types:
+          ua_boolean:
+            type: uint8
+            encoding: "0=false, non-zero=true"
+
+          ua_sbyte:
+            type: int8
+
+          ua_byte:
+            type: uint8
+
+          ua_int16:
+            type: int16
+
+          ua_uint16:
+            type: uint16
+
+          ua_int32:
+            type: int32
+
+          ua_uint32:
+            type: uint32
+
+          ua_int64:
+            type: int64
+
+          ua_uint64:
+            type: uint64
+
+          ua_float:
+            type: float32
+            encoding: IEEE 754
+
+          ua_double:
+            type: float64
+            encoding: IEEE 754
+
+          ua_string:
+            fields:
+              - name: Length
+                type: int32
+                description: "-1 for null string"
+              - name: Value
+                type: char[]
+                length_field: Length
+                encoding: UTF-8
+
+          ua_datetime:
+            type: int64
+            description: "100-nanosecond intervals since January 1, 1601 UTC"
+
+          ua_guid:
+            type: bytes[16]
+            encoding: "Data1(4) Data2(2) Data3(2) Data4(8)"
+
+          ua_byte_string:
+            fields:
+              - name: Length
+                type: int32
+                description: "-1 for null"
+              - name: Value
+                type: uint8[]
+                length_field: Length
+
+          ua_xml_element:
+            same_as: ua_byte_string
+            encoding: UTF-8
+
+          ua_node_id:
+            fields:
+              - name: EncodingByte
+                type: uint8
+                description: "Determines NodeId format"
+              - name: Namespace
+                type: conditional
+                condition: "EncodingByte & 0x0F"
+                cases:
+                  0x00:  # TwoByte
+                    fields:
+                      - name: Identifier
+                        type: uint8
+                  0x01:  # FourByte
+                    fields:
+                      - name: NamespaceIndex
+                        type: uint8
+                      - name: Identifier
+                        type: uint16
+                  0x02:  # Numeric
+                    fields:
+                      - name: NamespaceIndex
+                        type: uint16
+                      - name: Identifier
+                        type: uint32
+                  0x03:  # String
+                    fields:
+                      - name: NamespaceIndex
+                        type: uint16
+                      - name: Identifier
+                        type: ua_string
+                  0x04:  # Guid
+                    fields:
+                      - name: NamespaceIndex
+                        type: uint16
+                      - name: Identifier
+                        type: ua_guid
+                  0x05:  # ByteString
+                    fields:
+                      - name: NamespaceIndex
+                        type: uint16
+                      - name: Identifier
+                        type: ua_byte_string
+
+          ua_expanded_node_id:
+            fields:
+              - name: EncodingByte
+                type: uint8
+              - name: NodeId
+                type: ua_node_id
+              - name: NamespaceUri
+                type: ua_string
+                condition: "EncodingByte & 0x80"
+              - name: ServerIndex
+                type: uint32
+                condition: "EncodingByte & 0x40"
+
+          ua_status_code:
+            type: uint32
+            description: "OPC-UA StatusCode (see Part 4)"
+
+          ua_qualified_name:
+            fields:
+              - name: NamespaceIndex
+                type: uint16
+              - name: Name
+                type: ua_string
+
+          ua_localized_text:
+            fields:
+              - name: EncodingMask
+                type: uint8
+              - name: Locale
+                type: ua_string
+                condition: "EncodingMask & 0x01"
+              - name: Text
+                type: ua_string
+                condition: "EncodingMask & 0x02"
+
+          ua_extension_object:
+            fields:
+              - name: TypeId
+                type: ua_node_id
+              - name: Encoding
+                type: uint8
+                enum: [NO_BODY, BINARY_BODY, XML_BODY]
+              - name: Body
+                type: ua_byte_string
+                condition: "Encoding != NO_BODY"
+
+          ua_data_value:
+            fields:
+              - name: EncodingMask
+                type: uint8
+              - name: Value
+                type: ua_variant
+                condition: "EncodingMask & 0x01"
+              - name: StatusCode
+                type: ua_status_code
+                condition: "EncodingMask & 0x02"
+              - name: SourceTimestamp
+                type: ua_datetime
+                condition: "EncodingMask & 0x04"
+              - name: SourcePicoseconds
+                type: uint16
+                condition: "EncodingMask & 0x10"
+              - name: ServerTimestamp
+                type: ua_datetime
+                condition: "EncodingMask & 0x08"
+              - name: ServerPicoseconds
+                type: uint16
+                condition: "EncodingMask & 0x20"
+
+          ua_variant:
+            fields:
+              - name: EncodingMask
+                type: uint8
+                description: "Type ID and array flags"
+              - name: ArrayLength
+                type: int32
+                condition: "EncodingMask & 0x80"
+              - name: Value
+                type: dynamic
+                type_field: "EncodingMask & 0x3F"
+              - name: ArrayDimensions
+                type: int32[]
+                condition: "EncodingMask & 0xC0 == 0xC0"
+
+          ua_diagnostic_info:
+            fields:
+              - name: EncodingMask
+                type: uint8
+              - name: SymbolicId
+                type: int32
+                condition: "EncodingMask & 0x01"
+              - name: NamespaceUri
+                type: int32
+                condition: "EncodingMask & 0x02"
+              - name: Locale
+                type: int32
+                condition: "EncodingMask & 0x08"
+              - name: LocalizedText
+                type: int32
+                condition: "EncodingMask & 0x04"
+              - name: AdditionalInfo
+                type: ua_string
+                condition: "EncodingMask & 0x10"
+              - name: InnerStatusCode
+                type: ua_status_code
+                condition: "EncodingMask & 0x20"
+              - name: InnerDiagnosticInfo
+                type: ua_diagnostic_info
+                condition: "EncodingMask & 0x40"
+
+    # Streaming configuration
+    streaming:
+      chunked: true
+      max_chunk_size: 65535
+      reassembly: true
+      sequence_tracking: true
+
+    # Connection state machine
+    state_machine:
+      initial: CLOSED
+      states:
+        - CLOSED
+        - HELLO_SENT
+        - HELLO_RECEIVED
+        - ACK_SENT
+        - CONNECTED
+        - SECURE_CHANNEL_OPENING
+        - SECURE_CHANNEL_OPEN
+        - CLOSING
+        - ERROR
+      transitions:
+        CLOSED:
+          - event: send_hello
+            target: HELLO_SENT
+          - event: receive_hello
+            target: HELLO_RECEIVED
+        HELLO_SENT:
+          - event: receive_ack
+            target: CONNECTED
+          - event: receive_error
+            target: ERROR
+          - event: timeout
+            target: CLOSED
+        HELLO_RECEIVED:
+          - event: send_ack
+            target: CONNECTED
+          - event: send_error
+            target: CLOSED
+        CONNECTED:
+          - event: send_opn
+            target: SECURE_CHANNEL_OPENING
+          - event: receive_clo
+            target: CLOSING
+          - event: receive_error
+            target: ERROR
+        SECURE_CHANNEL_OPENING:
+          - event: receive_opn_response
+            target: SECURE_CHANNEL_OPEN
+          - event: receive_error
+            target: ERROR
+          - event: timeout
+            target: ERROR
+        SECURE_CHANNEL_OPEN:
+          - event: send_msg
+            target: SECURE_CHANNEL_OPEN
+          - event: receive_msg
+            target: SECURE_CHANNEL_OPEN
+          - event: renew_channel
+            target: SECURE_CHANNEL_OPENING
+          - event: send_clo
+            target: CLOSING
+          - event: receive_clo
+            target: CLOSING
+        CLOSING:
+          - event: closed
+            target: CLOSED
+        ERROR:
+          - event: reset
+            target: CLOSED
+
+    # Security configuration
+    security:
+      policies:
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#None"
+          encryption: none
+          signing: none
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15"
+          encryption: AES-128-CBC
+          signing: RSA-SHA1
+          deprecated: true
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#Basic256"
+          encryption: AES-256-CBC
+          signing: RSA-SHA1
+          deprecated: true
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256"
+          encryption: AES-256-CBC
+          signing: RSA-SHA256
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"
+          encryption: AES-128-CBC
+          signing: RSA-SHA256
+        - uri: "http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss"
+          encryption: AES-256-CBC
+          signing: RSA-PSS-SHA256
+
+    constraints:
+      max_message_size: 16777216  # 16 MB
+      max_chunk_count: 4096
+      max_string_length: 1048576  # 1 MB
+      max_array_length: 65535
+      max_byte_string_length: 16777216
+      receive_buffer_size: 65535
+      send_buffer_size: 65535
+
+  output:
+    primary:
+      type: object
+      structure:
+        root: OpcUaMessage
+
+    alternatives:
+      - type: events
+        description: "Message event stream"
+      - type: ast
+        description: "Full message tree"
+
+    node_types:
+      OpcUaMessage:
+        variants:
+          - HelloMessage
+          - AcknowledgeMessage
+          - ErrorMessage
+          - OpenSecureChannelRequest
+          - OpenSecureChannelResponse
+          - CloseSecureChannelRequest
+          - ServiceMessage
+
+      HelloMessage:
+        fields:
+          messageType: "HEL"
+          protocolVersion: uint32
+          receiveBufferSize: uint32
+          sendBufferSize: uint32
+          maxMessageSize: uint32
+          maxChunkCount: uint32
+          endpointUrl: string
+
+      ServiceMessage:
+        fields:
+          secureChannelId: uint32
+          tokenId: uint32
+          sequenceNumber: uint32
+          requestId: uint32
+          serviceType: ServiceType
+          body: bytes
+
+    events:
+      - name: message_received
+        data:
+          messageType: string
+          size: uint32
+          secureChannelId: uint32?
+      - name: chunk_received
+        data:
+          sequenceNumber: uint32
+          isFinal: boolean
+      - name: connection_state_changed
+        data:
+          previousState: string
+          newState: string
+      - name: security_event
+        data:
+          eventType: string
+          securityPolicy: string
+
+    error_format:
+      structure:
+        code: string
+        statusCode: uint32
+        message: string
+        location:
+          offset: integer
+          field: string
+
+  # Parser modes
+  modes:
+    - name: client
+      description: "OPC-UA client mode"
+      options:
+        role: client
+        auto_reconnect: true
+
+    - name: server
+      description: "OPC-UA server mode"
+      options:
+        role: server
+        max_connections: 100
+
+    - name: proxy
+      description: "Protocol proxy/analyzer mode"
+      options:
+        role: passive
+        capture_all: true
+
+    - name: analyzer
+      description: "Deep packet analysis"
+      options:
+        decode_services: true
+        track_subscriptions: true
+
+  # OPC-UA specific error codes
+  error_codes:
+    # Protocol errors
+    - code: "OPCUA-E001"
+      message: "Invalid message type"
+      severity: error
+      status_code: 0x80010000
+
+    - code: "OPCUA-E002"
+      message: "Message size exceeds limit"
+      severity: error
+      status_code: 0x80030000
+
+    - code: "OPCUA-E003"
+      message: "Invalid chunk sequence"
+      severity: error
+      status_code: 0x80040000
+
+    - code: "OPCUA-E004"
+      message: "Secure channel not established"
+      severity: error
+      status_code: 0x80060000
+
+    - code: "OPCUA-E005"
+      message: "Security token expired"
+      severity: error
+      status_code: 0x80070000
+
+    - code: "OPCUA-E006"
+      message: "Certificate validation failed"
+      severity: error
+      status_code: 0x80120000
+
+    # Encoding errors
+    - code: "OPCUA-E010"
+      message: "Invalid NodeId encoding"
+      severity: error
+
+    - code: "OPCUA-E011"
+      message: "String length exceeds limit"
+      severity: error
+
+    - code: "OPCUA-E012"
+      message: "Array length exceeds limit"
+      severity: error
+
+    - code: "OPCUA-E013"
+      message: "Unknown variant type"
+      severity: error
+
+  features:
+    validation:
+      schema_validation: true
+      security_validation: true
+      sequence_validation: true
+
+    transformation:
+      chunk_reassembly: true
+      decryption: true
+      decompression: false
+
+    security:
+      certificate_validation: true
+      nonce_validation: true
+      replay_protection: true
+
+# =============================================================================
+# CONFORMANCE TESTING
+# =============================================================================
+conformance:
+  test_imports:
+    - source: "https://opcfoundation.org/test-tools/ctt-test-cases.zip"
+      format: opc_ctt
+
+  test_groups:
+    - name: connection_establishment
+      description: "Hello/Acknowledge exchange tests"
+      tests:
+        - id: "conn-001"
+          description: "Valid Hello message"
+          input:
+            hex: |
+              48454C46            # "HELF"
+              38000000            # MessageSize = 56
+              00000000            # ProtocolVersion = 0
+              00800000            # ReceiveBufferSize = 32768
+              00800000            # SendBufferSize = 32768
+              00000100            # MaxMessageSize = 65536
+              00000000            # MaxChunkCount = 0 (no limit)
+              17000000            # EndpointUrl length = 23
+              6F70632E7463703A2F2F6C6F63616C686F73743A34383430  # "opc.tcp://localhost:4840"
+          expected:
+            outcome: success
+            structure:
+              messageType: "HEL"
+              endpointUrl: "opc.tcp://localhost:4840"
+
+        - id: "conn-002"
+          description: "Valid Acknowledge message"
+          input:
+            hex: |
+              41434B46            # "ACKF"
+              1C000000            # MessageSize = 28
+              00000000            # ProtocolVersion = 0
+              00800000            # ReceiveBufferSize = 32768
+              00800000            # SendBufferSize = 32768
+              00000100            # MaxMessageSize = 65536
+              00000000            # MaxChunkCount = 0
+          expected:
+            outcome: success
+            structure:
+              messageType: "ACK"
+
+    - name: secure_channel
+      description: "Secure Channel establishment tests"
+      tests:
+        - id: "sec-001"
+          description: "OpenSecureChannel with None security"
+          input:
+            file: "test-data/opc-ua/open-secure-channel-none.bin"
+          expected:
+            outcome: success
+
+        - id: "sec-002"
+          description: "OpenSecureChannel with Basic256Sha256"
+          input:
+            file: "test-data/opc-ua/open-secure-channel-secure.bin"
+          expected:
+            outcome: success
+
+    - name: data_types
+      description: "Built-in data type encoding tests"
+      tests:
+        - id: "dtype-001"
+          description: "Boolean encoding"
+          input:
+            hex: "00"
+          type: ua_boolean
+          expected:
+            outcome: success
+            value: false
+
+        - id: "dtype-002"
+          description: "String encoding"
+          input:
+            hex: "05000000 48656C6C6F"  # Length=5, "Hello"
+          type: ua_string
+          expected:
+            outcome: success
+            value: "Hello"
+
+        - id: "dtype-003"
+          description: "NodeId TwoByte encoding"
+          input:
+            hex: "00 0D"  # EncodingByte=0, Identifier=13
+          type: ua_node_id
+          expected:
+            outcome: success
+            value:
+              namespaceIndex: 0
+              identifier: 13
+
+        - id: "dtype-004"
+          description: "DateTime encoding"
+          input:
+            hex: "00 70 F1 C7 7F 14 D7 01"  # 2026-01-14T12:00:00Z
+          type: ua_datetime
+          expected:
+            outcome: success
+
+    - name: security_tests
+      description: "Security vulnerability tests"
+      tests:
+        - id: "sec-vuln-001"
+          description: "Message size overflow"
+          input:
+            hex: |
+              48454C46            # "HELF"
+              FFFFFFFF            # Invalid size (overflow)
+          expected:
+            outcome: error
+            error_code: "OPCUA-E002"
+
+        - id: "sec-vuln-002"
+          description: "Invalid certificate"
+          input:
+            file: "test-data/opc-ua/invalid-cert.bin"
+          expected:
+            outcome: error
+            error_code: "OPCUA-E006"
+
+  property_tests:
+    - name: roundtrip
+      description: "Encode → Decode → Encode produces identical output"
+    - name: no_crash
+      description: "Parser never crashes on any binary input"
+
+  fuzzing:
+    corpus:
+      - path: "corpus/opc-ua/"
+    dictionary:
+      - path: "dictionaries/opc-ua.dict"
+    targets:
+      - type: crash
+      - type: memory
+    iterations: 10000000
+
+  benchmarks:
+    - name: message_throughput
+      description: "Messages parsed per second"
+      input:
+        generator:
+          type: service_messages
+          count: 10000
+      metrics:
+        - type: throughput
+          unit: "messages/second"
+          baseline: 100000
+
+    - name: latency_p99
+      description: "Parse latency at p99"
+      input:
+        generator:
+          type: service_messages
+      metrics:
+        - type: latency
+          percentile: p99
+          unit: "microseconds"
+          baseline: 100
+
+# =============================================================================
+# QUALITY REQUIREMENTS
+# =============================================================================
+quality:
+  minimum_level: 2
+
+  requirements:
+    conformance:
+      opc_ctt_pass: required
+      test_pass_rate: 100%
+
+    performance:
+      throughput_baseline: "100K msg/sec"
+      latency_p99: "100us"
+      memory_bounded: true
+
+    security:
+      certificate_validation: required
+      secure_policies_only: warning  # Warn on deprecated policies
+      replay_protection: required
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories: [throughput, latency, conformance]
+
+  x-manufacturing:
+    real_time:
+      deterministic_latency: true
+      max_jitter_us: 100
+      cycle_time_us: 1000
+
+    safety:
+      fail_safe_on_error: true
+      watchdog_timeout_ms: 50
+
+    protocol_conformance:
+      opc_foundation_certified: true
+      certification_level: "Standard 2017"
+      profile: "Standard UA Server"
+
+    interoperability:
+      tested_with:
+        - vendor: "Unified Automation"
+          product: "UaGateway"
+        - vendor: "Prosys"
+          product: "OPC UA Simulation Server"
+        - vendor: "Siemens"
+          product: "S7-1500 OPC UA Server"
+        - vendor: "Rockwell"
+          product: "FactoryTalk Linx Gateway"
+        - vendor: "Kepware"
+          product: "KEPServerEX"

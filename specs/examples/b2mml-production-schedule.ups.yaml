@@ -1,0 +1,789 @@
+# =============================================================================
+# B2MML Production Schedule Parser Specification
+# ISA-95 / IEC 62264 Compliant Manufacturing Operations Schedule
+# =============================================================================
+# This specification defines a parser for B2MML v7.0 Production Schedule
+# messages, enabling ERP-to-MES integration per ISA-95 standards.
+# =============================================================================
+
+ups_version: "1.0"
+
+# =============================================================================
+# METADATA - Parser Identity & Versioning
+# =============================================================================
+metadata:
+  id: "urn:ups:parser:b2mml:production-schedule:7.0.0"
+  name: "b2mml-production-schedule"
+  version: "7.0.0"
+  description: |
+    B2MML (Business to Manufacturing Markup Language) Production Schedule Parser.
+    Implements ISA-95 Part 4 transaction model for communicating production
+    schedules from ERP (Level 4) to MES (Level 3) systems.
+
+    Key Capabilities:
+    - Parse ProductionSchedule XML documents per B2MML v7.0 schema
+    - Validate against MESA International XSD schemas
+    - Extract ProductionRequest, SegmentRequirement, and resource allocations
+    - Support for scheduling hierarchies (Request → Segment → Resource)
+
+  status: stable
+  domain: "manufacturing-industrial"
+
+  category:
+    primary: "enterprise-integration"
+    secondary: ["structured", "transactional"]
+    data_flow: pull
+
+  tags:
+    - b2mml
+    - isa95
+    - iec62264
+    - manufacturing
+    - mes
+    - erp
+    - production-schedule
+    - xml
+    - mesa
+    - level3-level4
+
+  references:
+    - type: standard
+      name: "ANSI/ISA-95.00.04"
+      version: "2018"
+      url: "https://www.isa.org/products/ansi-isa-95-00-04-2018-enterprise-control-system"
+      description: "ISA-95 Part 4: Object models and attributes for MOM"
+
+    - type: standard
+      name: "IEC 62264-4"
+      version: "2015"
+      url: "https://webstore.iec.ch/publication/22809"
+      description: "Object model attributes for MOM integration"
+
+    - type: standard
+      name: "B2MML v7.0"
+      version: "7.0"
+      url: "https://www.mesa.org/en/B2MML.asp"
+      description: "MESA International B2MML XML Implementation"
+
+    - type: schema
+      name: "B2MML-ProductionSchedule.xsd"
+      url: "https://www.mesa.org/schemas/B2MML-V0700/B2MML-ProductionSchedule.xsd"
+
+  authors:
+    - name: "MESA International"
+      email: "info@mesa.org"
+      organization: "MESA International"
+      role: "standard_owner"
+
+  maintainers:
+    - name: "UPP Manufacturing Working Group"
+      email: "manufacturing@upp-registry.org"
+      organization: "UPP Foundation"
+
+  license:
+    type: "Apache-2.0"
+    url: "https://www.apache.org/licenses/LICENSE-2.0"
+
+# =============================================================================
+# PARSER DEFINITION
+# =============================================================================
+parser:
+  input:
+    format:
+      type: xml
+      schema:
+        type: xsd
+        location: "https://www.mesa.org/schemas/B2MML-V0700/B2MML-ProductionSchedule.xsd"
+        namespace: "http://www.mesa.org/xml/B2MML"
+        namespace_prefix: "b2mml"
+        imports:
+          - namespace: "http://www.mesa.org/xml/B2MML"
+            schema: "B2MML-Common.xsd"
+          - namespace: "http://www.mesa.org/xml/B2MML"
+            schema: "B2MML-CoreComponents.xsd"
+        validation:
+          required: true
+          mode: strict
+
+      # Inline grammar for documentation (subset)
+      grammar: |
+        ProductionSchedule ::=
+          ID?
+          Description*
+          HierarchyScope?
+          PublishedDate?
+          StartTime?
+          EndTime?
+          EquipmentElementLevel?
+          ScheduleState?
+          ProductionRequest*
+
+        ProductionRequest ::=
+          ID
+          Description*
+          HierarchyScope?
+          RequestState?
+          StartTime?
+          EndTime?
+          Priority?
+          ProductProductionRuleID*
+          ProductSegmentID*
+          SegmentRequirement*
+          RequestedSegmentResponse*
+
+        SegmentRequirement ::=
+          ID?
+          Description*
+          ProcessSegmentID?
+          ProductSegmentID?
+          EarliestStartTime?
+          LatestEndTime?
+          Duration?
+          SegmentState?
+          ProductionParameter*
+          PersonnelRequirement*
+          EquipmentRequirement*
+          PhysicalAssetRequirement*
+          MaterialProducedRequirement*
+          MaterialConsumedRequirement*
+          SegmentRequirement*  # Nested segments
+
+    encoding:
+      charset: utf-8
+      bom_handling: optional
+
+    constraints:
+      max_size_mb: 100
+      max_depth: 20
+      max_requests: 10000
+      max_segments_per_request: 1000
+
+  output:
+    primary:
+      type: object
+      structure:
+        root: ProductionSchedule
+        namespaced: true
+        preserve_order: true
+
+    alternatives:
+      - type: ast
+        description: "Full XML DOM tree with namespaces"
+      - type: events
+        description: "SAX-style streaming events"
+
+    # Node type definitions
+    node_types:
+      ProductionSchedule:
+        fields:
+          id: string?
+          descriptions: Description[]
+          hierarchyScope: HierarchyScope?
+          publishedDate: datetime?
+          startTime: datetime?
+          endTime: datetime?
+          equipmentElementLevel: EquipmentElementLevel?
+          scheduleState: ScheduleState?
+          productionRequests: ProductionRequest[]
+
+      ProductionRequest:
+        fields:
+          id: string
+          descriptions: Description[]
+          hierarchyScope: HierarchyScope?
+          requestState: RequestState?
+          startTime: datetime?
+          endTime: datetime?
+          priority: integer?
+          productProductionRuleIds: string[]
+          productSegmentIds: string[]
+          segmentRequirements: SegmentRequirement[]
+          requestedSegmentResponses: RequestedSegmentResponse[]
+
+      SegmentRequirement:
+        fields:
+          id: string?
+          descriptions: Description[]
+          processSegmentId: string?
+          productSegmentId: string?
+          earliestStartTime: datetime?
+          latestEndTime: datetime?
+          duration: duration?
+          segmentState: SegmentState?
+          productionParameters: ProductionParameter[]
+          personnelRequirements: PersonnelRequirement[]
+          equipmentRequirements: EquipmentRequirement[]
+          physicalAssetRequirements: PhysicalAssetRequirement[]
+          materialProducedRequirements: MaterialRequirement[]
+          materialConsumedRequirements: MaterialRequirement[]
+          nestedSegments: SegmentRequirement[]
+
+      PersonnelRequirement:
+        fields:
+          personnelClassId: string?
+          personId: string?
+          description: Description[]
+          quantity: ValueType[]
+          personnelUse: PersonnelUse?
+          spatialDefinition: SpatialDefinition?
+
+      EquipmentRequirement:
+        fields:
+          equipmentClassId: string?
+          equipmentId: string?
+          description: Description[]
+          quantity: ValueType[]
+          equipmentUse: EquipmentUse?
+
+      MaterialRequirement:
+        fields:
+          materialClassId: string?
+          materialDefinitionId: string?
+          materialLotId: string?
+          materialSublotId: string?
+          description: Description[]
+          quantity: ValueType[]
+          materialUse: MaterialUse?
+          assemblyType: AssemblyType?
+          assemblyRelationship: AssemblyRelationship?
+
+      # Common types
+      Description:
+        fields:
+          value: string
+          languageId: string?
+
+      ValueType:
+        fields:
+          valueString: string?
+          dataType: string?
+          unitOfMeasure: string?
+          key: string?
+
+      HierarchyScope:
+        fields:
+          equipmentId: string?
+          equipmentElementLevel: EquipmentElementLevel?
+
+      # Enumerations
+      ScheduleState:
+        enum: [Forecast, Released, Cancelled, Waiting, Ready, Running, Completed, Aborted, Held, Suspended]
+
+      RequestState:
+        enum: [Forecast, Released, Cancelled, Waiting, Ready, Running, Completed, Aborted, Held, Suspended]
+
+      SegmentState:
+        enum: [Forecast, Released, Cancelled, Waiting, Ready, Running, Completed, Aborted, Held, Suspended]
+
+      EquipmentElementLevel:
+        enum: [Enterprise, Site, Area, WorkCenter, WorkUnit, ProcessCell, Unit, ProductionLine, ProductionUnit, WorkCell, StorageZone, StorageUnit]
+
+      PersonnelUse:
+        enum: [Other, Operator, Crew, Supervisor, Maintenance]
+
+      EquipmentUse:
+        enum: [Other, Primary, Secondary]
+
+      MaterialUse:
+        enum: [Other, Produced, Consumed, Consumable, Raw, Intermediate, Final]
+
+      AssemblyType:
+        enum: [Physical, Logical]
+
+      AssemblyRelationship:
+        enum: [Permanent, Transient]
+
+    # Structured error format
+    error_format:
+      structure:
+        code: string
+        message: string
+        severity: enum[error, warning, info]
+        location:
+          line: integer
+          column: integer
+          xpath: string
+        context: string?
+        suggestion: string?
+
+  # Parser modes
+  modes:
+    - name: strict
+      description: "Full XSD validation, reject non-conformant documents"
+      options:
+        schema_validation: required
+        unknown_elements: reject
+        missing_required: error
+
+    - name: lenient
+      description: "Best-effort parsing, warn on issues"
+      options:
+        schema_validation: optional
+        unknown_elements: ignore
+        missing_required: warning
+
+    - name: streaming
+      description: "SAX-style event streaming for large documents"
+      options:
+        output_mode: events
+        memory_limit_mb: 64
+
+    - name: extract
+      description: "Extract specific elements only"
+      options:
+        xpath_filter: configurable
+        flatten_hierarchy: true
+
+  # Error codes specific to B2MML
+  error_codes:
+    # Schema validation errors
+    - code: "B2MML-E001"
+      message: "Invalid namespace: expected 'http://www.mesa.org/xml/B2MML'"
+      severity: error
+      category: schema
+
+    - code: "B2MML-E002"
+      message: "Missing required element: ProductionRequest.ID"
+      severity: error
+      category: schema
+
+    - code: "B2MML-E003"
+      message: "Invalid ScheduleState value"
+      severity: error
+      category: schema
+
+    - code: "B2MML-E004"
+      message: "Invalid datetime format: expected ISO 8601"
+      severity: error
+      category: schema
+
+    - code: "B2MML-E005"
+      message: "Invalid EquipmentElementLevel value"
+      severity: error
+      category: schema
+
+    # Semantic validation errors
+    - code: "B2MML-E010"
+      message: "EndTime must be after StartTime"
+      severity: error
+      category: semantic
+
+    - code: "B2MML-E011"
+      message: "LatestEndTime must be after EarliestStartTime"
+      severity: error
+      category: semantic
+
+    - code: "B2MML-E012"
+      message: "Circular SegmentRequirement reference detected"
+      severity: error
+      category: semantic
+
+    - code: "B2MML-E013"
+      message: "Duplicate ProductionRequest.ID within schedule"
+      severity: error
+      category: semantic
+
+    # Warnings
+    - code: "B2MML-W001"
+      message: "Deprecated element used"
+      severity: warning
+      category: compatibility
+
+    - code: "B2MML-W002"
+      message: "Missing recommended Description element"
+      severity: warning
+      category: best_practice
+
+  # Features
+  features:
+    validation:
+      schema_validation: true
+      semantic_validation: true
+      custom_validators:
+        - name: "temporal_consistency"
+          description: "Validate time relationships"
+        - name: "hierarchy_integrity"
+          description: "Validate HierarchyScope references"
+        - name: "id_uniqueness"
+          description: "Validate ID uniqueness"
+
+    transformation:
+      normalization: true
+      canonicalization: true
+      pretty_print: true
+
+    querying:
+      xpath: true
+
+    interop:
+      - json
+      - yaml
+      - csv  # Flattened for reporting
+
+# =============================================================================
+# CONFORMANCE TESTING
+# =============================================================================
+conformance:
+  test_imports:
+    - source: "https://www.mesa.org/test-suites/b2mml-conformance-v7.0.zip"
+      format: xml_test_suite
+
+  test_groups:
+    # Valid document tests
+    - name: valid_documents
+      description: "Valid B2MML Production Schedule documents"
+      tests:
+        - id: "valid-001"
+          description: "Minimal valid ProductionSchedule"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-2026-001</ID>
+              </ProductionSchedule>
+          expected:
+            outcome: success
+
+        - id: "valid-002"
+          description: "Full ProductionSchedule with ProductionRequest"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-2026-002</ID>
+                <Description>Weekly production schedule</Description>
+                <HierarchyScope>
+                  <EquipmentID>PLANT-001</EquipmentID>
+                  <EquipmentElementLevel>Site</EquipmentElementLevel>
+                </HierarchyScope>
+                <PublishedDate>2026-01-14T08:00:00Z</PublishedDate>
+                <StartTime>2026-01-15T06:00:00Z</StartTime>
+                <EndTime>2026-01-22T06:00:00Z</EndTime>
+                <ScheduleState>Released</ScheduleState>
+                <ProductionRequest>
+                  <ID>PR-2026-001</ID>
+                  <Description>Widget Assembly Order</Description>
+                  <RequestState>Ready</RequestState>
+                  <StartTime>2026-01-15T06:00:00Z</StartTime>
+                  <EndTime>2026-01-15T14:00:00Z</EndTime>
+                  <Priority>100</Priority>
+                  <SegmentRequirement>
+                    <ID>SR-001</ID>
+                    <ProcessSegmentID>ASSEMBLY-PROCESS</ProcessSegmentID>
+                    <Duration>PT8H</Duration>
+                    <SegmentState>Ready</SegmentState>
+                    <EquipmentRequirement>
+                      <EquipmentID>ASSEMBLY-LINE-01</EquipmentID>
+                      <Quantity>
+                        <ValueString>1</ValueString>
+                        <UnitOfMeasure>EA</UnitOfMeasure>
+                      </Quantity>
+                    </EquipmentRequirement>
+                    <PersonnelRequirement>
+                      <PersonnelClassID>OPERATOR</PersonnelClassID>
+                      <Quantity>
+                        <ValueString>3</ValueString>
+                        <UnitOfMeasure>EA</UnitOfMeasure>
+                      </Quantity>
+                    </PersonnelRequirement>
+                    <MaterialConsumedRequirement>
+                      <MaterialDefinitionID>WIDGET-COMPONENT-A</MaterialDefinitionID>
+                      <Quantity>
+                        <ValueString>1000</ValueString>
+                        <UnitOfMeasure>EA</UnitOfMeasure>
+                      </Quantity>
+                      <MaterialUse>Consumed</MaterialUse>
+                    </MaterialConsumedRequirement>
+                    <MaterialProducedRequirement>
+                      <MaterialDefinitionID>WIDGET-FINISHED</MaterialDefinitionID>
+                      <Quantity>
+                        <ValueString>1000</ValueString>
+                        <UnitOfMeasure>EA</UnitOfMeasure>
+                      </Quantity>
+                      <MaterialUse>Produced</MaterialUse>
+                    </MaterialProducedRequirement>
+                  </SegmentRequirement>
+                </ProductionRequest>
+              </ProductionSchedule>
+          expected:
+            outcome: success
+            structure:
+              root: ProductionSchedule
+              has:
+                - path: "$.id"
+                  value: "PS-2026-002"
+                - path: "$.scheduleState"
+                  value: "Released"
+                - path: "$.productionRequests[0].id"
+                  value: "PR-2026-001"
+                - path: "$.productionRequests[0].segmentRequirements[0].equipmentRequirements"
+                  count: 1
+
+        - id: "valid-003"
+          description: "Nested SegmentRequirements"
+          input:
+            file: "test-data/b2mml/nested-segments.xml"
+          expected:
+            outcome: success
+
+    # Invalid document tests
+    - name: invalid_documents
+      description: "Invalid B2MML documents"
+      tests:
+        - id: "invalid-001"
+          description: "Missing ProductionRequest.ID"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-001</ID>
+                <ProductionRequest>
+                  <Description>Missing ID element</Description>
+                </ProductionRequest>
+              </ProductionSchedule>
+          expected:
+            outcome: error
+            error_code: "B2MML-E002"
+
+        - id: "invalid-002"
+          description: "Invalid ScheduleState"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-001</ID>
+                <ScheduleState>InvalidState</ScheduleState>
+              </ProductionSchedule>
+          expected:
+            outcome: error
+            error_code: "B2MML-E003"
+
+        - id: "invalid-003"
+          description: "EndTime before StartTime"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-001</ID>
+                <StartTime>2026-01-15T14:00:00Z</StartTime>
+                <EndTime>2026-01-15T06:00:00Z</EndTime>
+              </ProductionSchedule>
+          expected:
+            outcome: error
+            error_code: "B2MML-E010"
+
+    # Edge cases
+    - name: edge_cases
+      description: "Edge cases and boundary conditions"
+      tests:
+        - id: "edge-001"
+          description: "Empty ProductionSchedule (ID only)"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-EMPTY</ID>
+              </ProductionSchedule>
+          expected:
+            outcome: success
+
+        - id: "edge-002"
+          description: "Maximum nesting depth (20 levels)"
+          input:
+            generator:
+              type: nested_segments
+              depth: 20
+          expected:
+            outcome: success
+
+        - id: "edge-003"
+          description: "Large schedule (10,000 requests)"
+          input:
+            generator:
+              type: production_requests
+              count: 10000
+          expected:
+            outcome: success
+
+        - id: "edge-004"
+          description: "Unicode descriptions"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>PS-UNICODE</ID>
+                <Description xml:lang="ja">製造スケジュール</Description>
+                <Description xml:lang="de">Fertigungsplan</Description>
+                <Description xml:lang="zh">生产计划</Description>
+              </ProductionSchedule>
+          expected:
+            outcome: success
+
+    # Security tests
+    - name: security
+      description: "Security-focused tests"
+      tests:
+        - id: "sec-001"
+          description: "XXE attack prevention"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <!DOCTYPE ProductionSchedule [
+                <!ENTITY xxe SYSTEM "file:///etc/passwd">
+              ]>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>&xxe;</ID>
+              </ProductionSchedule>
+          expected:
+            outcome: error
+            error_code: "SEC-001"
+
+        - id: "sec-002"
+          description: "Billion laughs attack prevention"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <!DOCTYPE ProductionSchedule [
+                <!ENTITY lol "lol">
+                <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+                <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+              ]>
+              <ProductionSchedule xmlns="http://www.mesa.org/xml/B2MML">
+                <ID>&lol3;</ID>
+              </ProductionSchedule>
+          expected:
+            outcome: error
+            error_code: "SEC-002"
+
+  # Property-based tests
+  property_tests:
+    - name: roundtrip
+      description: "Parse → Serialize → Parse produces equivalent output"
+      properties:
+        equivalence: structural
+
+    - name: deterministic
+      description: "Same input always produces identical output"
+      iterations: 1000
+
+    - name: no_crash
+      description: "Parser never crashes on any input"
+
+  # Fuzzing configuration
+  fuzzing:
+    corpus:
+      - path: "corpus/b2mml/"
+      - url: "https://www.mesa.org/test-suites/b2mml-fuzzing-corpus.zip"
+    dictionary:
+      - path: "dictionaries/b2mml.dict"
+      - path: "dictionaries/xml.dict"
+    targets:
+      - type: crash
+        timeout_ms: 5000
+      - type: memory
+        limit_mb: 256
+    iterations: 1000000
+
+  # Performance benchmarks
+  benchmarks:
+    - name: throughput
+      description: "Parse rate for typical production schedules"
+      input:
+        generator:
+          type: production_schedule
+          requests: 100
+          segments_per_request: 10
+      metrics:
+        - type: throughput
+          unit: "documents/second"
+          baseline: 100
+
+    - name: large_schedule
+      description: "Parse time for large schedules"
+      input:
+        generator:
+          type: production_schedule
+          requests: 10000
+      metrics:
+        - type: latency
+          percentile: p99
+          unit: "ms"
+          baseline: 5000
+
+    - name: memory_efficiency
+      description: "Memory usage during parsing"
+      input:
+        generator:
+          type: production_schedule
+          requests: 1000
+      metrics:
+        - type: memory
+          unit: "MB"
+          baseline: 128
+
+# =============================================================================
+# QUALITY REQUIREMENTS
+# =============================================================================
+quality:
+  minimum_level: 2
+
+  requirements:
+    conformance:
+      test_pass_rate: 99.5%
+      property_tests: required
+      edge_case_coverage: 95%
+
+    performance:
+      throughput_baseline: "100 docs/sec"
+      latency_p99: "50ms"
+      memory_baseline: "128MB for 1000 requests"
+
+    security:
+      xxe_protection: required
+      entity_expansion_limit: 1000
+      max_element_depth: 100
+      input_validation: strict
+
+    maintainability:
+      documentation: required
+      test_coverage: 80%
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  # UPP-specific extensions
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories: [conformance, throughput, memory]
+    ai_testing:
+      enabled: true
+      provider: "claude"
+      edge_case_generation: true
+
+  # Manufacturing-specific extensions
+  x-manufacturing:
+    real_time:
+      deterministic_latency: true
+      max_jitter_ms: 1
+
+    safety:
+      fail_safe_default: true
+      watchdog_timeout_ms: 100
+
+    protocol_conformance:
+      mesa_certified: pending
+      isa95_compliance: full
+
+    interoperability:
+      tested_with:
+        - vendor: "SAP"
+          product: "SAP ME"
+          version: "15.4"
+        - vendor: "Rockwell"
+          product: "FactoryTalk ProductionCentre"
+          version: "12.0"
+        - vendor: "Siemens"
+          product: "Opcenter Execution"
+          version: "2023"

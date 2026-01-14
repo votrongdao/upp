@@ -1,0 +1,842 @@
+# =============================================================================
+# MTConnect Streams Parser Specification
+# MTConnect Standard v2.2 - Machine Tool Data Streams
+# =============================================================================
+# This specification defines a parser for MTConnect data streams,
+# enabling standardized machine tool monitoring and analytics.
+# =============================================================================
+
+ups_version: "1.0"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+metadata:
+  id: "urn:ups:parser:mtconnect:streams:2.2.0"
+  name: "mtconnect-streams"
+  version: "2.2.0"
+  description: |
+    MTConnect Streams Parser for machine tool data collection.
+
+    MTConnect is an open, royalty-free standard that provides a semantic
+    vocabulary for manufacturing equipment. This parser handles:
+
+    - Device model parsing (Probe response)
+    - Current data snapshot (Current response)
+    - Historical data streams (Sample response)
+    - Condition/alarm data
+    - Asset documents (cutting tools, files, etc.)
+
+    Target use cases:
+    - CNC machine monitoring
+    - Predictive maintenance
+    - Production analytics
+    - Digital twin data feeds
+    - Quality management systems
+
+  status: stable
+  domain: "manufacturing-industrial"
+
+  category:
+    primary: "machine-tool-data"
+    secondary: ["streaming", "xml", "rest-api"]
+    data_flow: pull
+
+  tags:
+    - mtconnect
+    - cnc
+    - machine-tool
+    - manufacturing
+    - industry-4.0
+    - iiot
+    - predictive-maintenance
+    - digital-twin
+
+  references:
+    - type: standard
+      name: "MTConnect Standard"
+      version: "2.2"
+      url: "https://www.mtconnect.org/standard"
+      description: "MTConnect Institute Standard Specification"
+
+    - type: schema
+      name: "MTConnect Schemas"
+      url: "https://schemas.mtconnect.org/schemas/MTConnectStreams_2.2.xsd"
+
+    - type: specification
+      name: "OPC UA for MTConnect"
+      url: "https://opcfoundation.org/developer-tools/specifications-opc-ua-information-models/opc-ua-for-mtconnect/"
+
+  authors:
+    - name: "MTConnect Institute"
+      organization: "MTConnect Institute"
+      url: "https://www.mtconnect.org/"
+      role: "standard_owner"
+
+  maintainers:
+    - name: "UPP Machine Tool Working Group"
+      email: "machine-tools@upp-registry.org"
+
+  license:
+    type: "Apache-2.0"
+
+# =============================================================================
+# PARSER DEFINITION
+# =============================================================================
+parser:
+  input:
+    format:
+      type: xml
+      schema:
+        type: xsd
+        locations:
+          devices: "https://schemas.mtconnect.org/schemas/MTConnectDevices_2.2.xsd"
+          streams: "https://schemas.mtconnect.org/schemas/MTConnectStreams_2.2.xsd"
+          assets: "https://schemas.mtconnect.org/schemas/MTConnectAssets_2.2.xsd"
+          error: "https://schemas.mtconnect.org/schemas/MTConnectError_2.2.xsd"
+        namespace: "urn:mtconnect.org:MTConnectStreams:2.2"
+        validation:
+          required: true
+          mode: strict
+
+      # MTConnect Document Types
+      document_types:
+        # Probe Response - Device Model
+        MTConnectDevices:
+          description: "Device information model"
+          endpoint: "/probe"
+          elements:
+            - Header
+            - Devices
+
+        # Current Response - Latest Values
+        MTConnectStreams:
+          description: "Data stream values"
+          endpoints: ["/current", "/sample"]
+          elements:
+            - Header
+            - Streams
+
+        # Asset Response
+        MTConnectAssets:
+          description: "Asset documents"
+          endpoint: "/assets"
+          elements:
+            - Header
+            - Assets
+
+        # Error Response
+        MTConnectError:
+          description: "Error information"
+          elements:
+            - Header
+            - Errors
+
+      # Inline grammar (subset of MTConnect Streams)
+      grammar: |
+        MTConnectStreams ::=
+          Header
+          Streams
+
+        Header ::=
+          version
+          creationTime
+          sender
+          instanceId
+          bufferSize
+          nextSequence?
+          firstSequence?
+          lastSequence?
+          assetBufferSize?
+          assetCount?
+          deviceModelChangeTime?
+
+        Streams ::=
+          DeviceStream*
+
+        DeviceStream ::=
+          @name
+          @uuid
+          @id?
+          ComponentStream*
+
+        ComponentStream ::=
+          @component
+          @name?
+          @uuid?
+          @componentId
+          (Samples | Events | Condition)*
+
+        Samples ::=
+          DataItem*    # Numeric samples
+
+        Events ::=
+          DataItem*    # Discrete events
+
+        Condition ::=
+          DataItem*    # Condition/fault states
+
+        DataItem ::=
+          @dataItemId
+          @sequence
+          @timestamp
+          @name?
+          @subType?
+          content      # Value or structured content
+
+    # REST API Configuration
+    api:
+      base_path: "/"
+      endpoints:
+        - path: "/probe"
+          method: GET
+          response: MTConnectDevices
+          description: "Get device model"
+
+        - path: "/current"
+          method: GET
+          response: MTConnectStreams
+          parameters:
+            - name: path
+              type: string
+              description: "XPath filter"
+            - name: at
+              type: integer
+              description: "Specific sequence number"
+          description: "Get current values"
+
+        - path: "/sample"
+          method: GET
+          response: MTConnectStreams
+          parameters:
+            - name: path
+              type: string
+            - name: from
+              type: integer
+              description: "Starting sequence number"
+            - name: count
+              type: integer
+              description: "Number of samples"
+            - name: interval
+              type: integer
+              description: "Streaming interval (ms)"
+          description: "Get historical/streaming data"
+
+        - path: "/assets"
+          method: GET
+          response: MTConnectAssets
+          parameters:
+            - name: type
+              type: string
+            - name: device
+              type: string
+            - name: count
+              type: integer
+          description: "Get asset documents"
+
+        - path: "/asset/{assetId}"
+          method: GET
+          response: MTConnectAssets
+          description: "Get specific asset"
+
+    # Streaming Configuration
+    streaming:
+      chunked: true
+      interval_ms: 100
+      http_streaming: true
+      buffer_management:
+        circular: true
+        buffer_size: 131072
+
+    encoding:
+      charset: utf-8
+      content_type: "application/xml"
+
+    constraints:
+      max_response_size_mb: 100
+      max_buffer_depth: 1000000
+      max_assets: 10000
+
+  output:
+    primary:
+      type: object
+      structure:
+        root: MTConnectDocument
+
+    alternatives:
+      - type: events
+        description: "DataItem event stream"
+      - type: ast
+        description: "Full document tree"
+      - type: json
+        description: "JSON representation"
+
+    # Data Item Categories
+    data_item_categories:
+      samples:
+        description: "Numeric values sampled at intervals"
+        types:
+          - ACCELERATION
+          - ACCUMULATED_TIME
+          - AMPERAGE
+          - ANGLE
+          - ANGULAR_ACCELERATION
+          - ANGULAR_VELOCITY
+          - AXIS_FEEDRATE
+          - CAPACITY_FLUID
+          - CAPACITY_SPATIAL
+          - CONCENTRATION
+          - CONDUCTIVITY
+          - CUTTING_SPEED
+          - DENSITY
+          - DEPOSITION_ACCELERATION_VOLUMETRIC
+          - DEPOSITION_DENSITY
+          - DEPOSITION_MASS
+          - DEPOSITION_RATE_VOLUMETRIC
+          - DEPOSITION_VOLUME
+          - DISPLACEMENT
+          - ELECTRICAL_ENERGY
+          - EQUIPMENT_TIMER
+          - FILL_LEVEL
+          - FLOW
+          - FREQUENCY
+          - HARDNESS
+          - LENGTH
+          - LEVEL
+          - LINEAR_FORCE
+          - LOAD
+          - MASS
+          - ORIENTATION
+          - PATH_FEEDRATE
+          - PATH_FEEDRATE_PER_REVOLUTION
+          - PATH_POSITION
+          - PH
+          - POSITION
+          - POWER_FACTOR
+          - PRESSURE
+          - PROCESS_TIMER
+          - RESISTANCE
+          - ROTARY_VELOCITY
+          - SOUND_LEVEL
+          - SPINDLE_SPEED
+          - STRAIN
+          - TEMPERATURE
+          - TENSION
+          - TILT
+          - TORQUE
+          - VELOCITY
+          - VISCOSITY
+          - VOLTAGE
+          - VOLT_AMPERE
+          - VOLT_AMPERE_REACTIVE
+          - VOLUME_FLUID
+          - VOLUME_SPATIAL
+          - WATTAGE
+
+      events:
+        description: "Discrete state changes"
+        types:
+          - ACTIVE_AXES
+          - ACTUATOR_STATE
+          - ALARM
+          - ASSET_CHANGED
+          - ASSET_REMOVED
+          - AVAILABILITY
+          - AXIS_COUPLING
+          - AXIS_INTERLOCK
+          - AXIS_STATE
+          - BLOCK
+          - BLOCK_COUNT
+          - CHUCK_INTERLOCK
+          - CHUCK_STATE
+          - CODE
+          - COMPOSITION_STATE
+          - CONTROLLER_MODE
+          - CONTROLLER_MODE_OVERRIDE
+          - COUPLED_AXES
+          - CYCLE_COUNT
+          - DEVICE_UUID
+          - DIRECTION
+          - DOOR_STATE
+          - EMERGENCY_STOP
+          - END_OF_BAR
+          - EQUIPMENT_MODE
+          - EXECUTION
+          - FIRMWARE
+          - FUNCTIONAL_MODE
+          - HARDWARE
+          - INTERFACE_STATE
+          - LIBRARY
+          - LINE
+          - LINE_LABEL
+          - LINE_NUMBER
+          - MATERIAL
+          - MATERIAL_LAYER
+          - MESSAGE
+          - NETWORK
+          - OPERATING_MODE
+          - OPERATING_SYSTEM
+          - OPERATOR_ID
+          - PALLET_ID
+          - PART_COUNT
+          - PART_DETECTION_STATE
+          - PART_GROUP_ID
+          - PART_ID
+          - PART_KIND_ID
+          - PART_NUMBER
+          - PART_STATUS
+          - PATH_MODE
+          - POWER_STATE
+          - PROCESS_KIND_ID
+          - PROCESS_OCCURRENCE_ID
+          - PROCESS_STATE
+          - PROCESS_TIME
+          - PROGRAM
+          - PROGRAM_COMMENT
+          - PROGRAM_EDIT
+          - PROGRAM_EDIT_NAME
+          - PROGRAM_HEADER
+          - PROGRAM_LOCATION
+          - PROGRAM_LOCATION_TYPE
+          - PROGRAM_NEST_LEVEL
+          - ROTARY_MODE
+          - ROTATION
+          - SERIAL_NUMBER
+          - SPINDLE_INTERLOCK
+          - TOOL_ASSET_ID
+          - TOOL_GROUP
+          - TOOL_ID
+          - TOOL_NUMBER
+          - TOOL_OFFSET
+          - USER
+          - VARIABLE
+          - WAIT_STATE
+          - WIRE
+          - WORKHOLDING_ID
+          - WORK_OFFSET
+
+      condition:
+        description: "Condition/alarm states"
+        levels:
+          - UNAVAILABLE
+          - NORMAL
+          - WARNING
+          - FAULT
+        types:
+          - ACTUATOR
+          - CHUCK
+          - CLAMP
+          - COMMUNICATIONS
+          - COMPOSITION
+          - DATA_RANGE
+          - DIRECTION
+          - ELECTRICAL
+          - END_OF_BAR
+          - HARDWARE
+          - HYDRAULIC
+          - INTERFACE_STATE
+          - LOGIC_PROGRAM
+          - MOTION_PROGRAM
+          - PNEUMATIC
+          - POWER
+          - SYSTEM
+
+    node_types:
+      MTConnectDocument:
+        variants:
+          - MTConnectDevices
+          - MTConnectStreams
+          - MTConnectAssets
+          - MTConnectError
+
+      Header:
+        fields:
+          version: string
+          creationTime: datetime
+          sender: string
+          instanceId: uint64
+          bufferSize: uint32
+          nextSequence: uint64?
+          firstSequence: uint64?
+          lastSequence: uint64?
+          assetBufferSize: uint32?
+          assetCount: uint32?
+
+      DeviceStream:
+        fields:
+          name: string
+          uuid: string
+          id: string?
+          componentStreams: ComponentStream[]
+
+      ComponentStream:
+        fields:
+          component: string
+          name: string?
+          uuid: string?
+          componentId: string
+          samples: DataItemValue[]
+          events: DataItemValue[]
+          conditions: ConditionValue[]
+
+      DataItemValue:
+        fields:
+          dataItemId: string
+          sequence: uint64
+          timestamp: datetime
+          name: string?
+          subType: string?
+          value: any
+          resetTriggered: ResetTrigger?
+
+      ConditionValue:
+        fields:
+          dataItemId: string
+          sequence: uint64
+          timestamp: datetime
+          type: ConditionType
+          level: ConditionLevel
+          nativeCode: string?
+          nativeSeverity: string?
+          qualifier: Qualifier?
+          message: string?
+
+      ConditionLevel:
+        enum: [UNAVAILABLE, NORMAL, WARNING, FAULT]
+
+      Qualifier:
+        enum: [HIGH, LOW]
+
+      ResetTrigger:
+        enum: [ACTION_COMPLETE, ANNUAL, DAY, LIFE, MAINTENANCE, MONTH, POWER_ON, SHIFT, WEEK]
+
+    events:
+      - name: data_item_changed
+        data:
+          deviceId: string
+          dataItemId: string
+          sequence: uint64
+          timestamp: datetime
+          category: string
+          type: string
+          value: any
+          previousValue: any?
+
+      - name: condition_changed
+        data:
+          deviceId: string
+          dataItemId: string
+          level: ConditionLevel
+          previousLevel: ConditionLevel?
+          nativeCode: string?
+          message: string?
+          timestamp: datetime
+
+      - name: device_added
+        data:
+          deviceId: string
+          deviceName: string
+          uuid: string
+
+      - name: asset_changed
+        data:
+          assetId: string
+          assetType: string
+          deviceId: string?
+
+    error_format:
+      structure:
+        errorCode: string
+        message: string
+        httpStatus: integer
+
+  modes:
+    - name: polling
+      description: "Periodic current value requests"
+      options:
+        interval_ms: 1000
+        endpoint: current
+
+    - name: streaming
+      description: "Continuous sample streaming"
+      options:
+        interval_ms: 100
+        endpoint: sample
+
+    - name: historical
+      description: "Historical data retrieval"
+      options:
+        from_sequence: configurable
+        count: configurable
+
+    - name: probe_only
+      description: "Device model discovery"
+      options:
+        endpoint: probe
+
+  error_codes:
+    - code: "MTC-E001"
+      message: "Out of range sequence number"
+      severity: error
+      http_status: 404
+
+    - code: "MTC-E002"
+      message: "Invalid XPath"
+      severity: error
+      http_status: 400
+
+    - code: "MTC-E003"
+      message: "Asset not found"
+      severity: error
+      http_status: 404
+
+    - code: "MTC-E004"
+      message: "Invalid interval"
+      severity: error
+      http_status: 400
+
+    - code: "MTC-E005"
+      message: "Agent limit exceeded"
+      severity: error
+      http_status: 503
+
+    - code: "MTC-W001"
+      message: "Data items unavailable"
+      severity: warning
+
+  features:
+    validation:
+      schema_validation: true
+      sequence_validation: true
+      timestamp_validation: true
+
+    transformation:
+      xml_to_json: true
+      flatten_streams: true
+      aggregate_by_device: true
+
+    querying:
+      xpath: true
+      sequence_range: true
+
+    analytics:
+      condition_tracking: true
+      oee_calculation: true
+      trend_analysis: true
+
+    interop:
+      - json
+      - opc_ua
+      - mqtt
+
+# =============================================================================
+# CONFORMANCE TESTING
+# =============================================================================
+conformance:
+  test_imports:
+    - source: "https://github.com/mtconnect/cppagent/tree/master/test"
+      format: mtconnect_test_suite
+
+  test_groups:
+    - name: probe_response
+      description: "Device model (Probe) tests"
+      tests:
+        - id: "probe-001"
+          description: "Parse valid Devices document"
+          input:
+            url: "http://agent.mtconnect.org/probe"
+          expected:
+            outcome: success
+            has_elements:
+              - Devices
+              - Device
+              - Components
+
+        - id: "probe-002"
+          description: "Parse device with all data items"
+          input:
+            file: "test-data/mtconnect/full-device.xml"
+          expected:
+            outcome: success
+
+    - name: current_response
+      description: "Current value tests"
+      tests:
+        - id: "current-001"
+          description: "Parse current values"
+          input:
+            inline: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <MTConnectStreams xmlns="urn:mtconnect.org:MTConnectStreams:2.2">
+                <Header creationTime="2026-01-14T12:00:00Z" sender="Agent"
+                        instanceId="1705234800" version="2.2" bufferSize="131072"
+                        nextSequence="100" firstSequence="1" lastSequence="99"/>
+                <Streams>
+                  <DeviceStream name="VMC-3Axis" uuid="device-001">
+                    <ComponentStream component="Controller" componentId="ctrl">
+                      <Events>
+                        <Execution dataItemId="exec" sequence="98" timestamp="2026-01-14T11:59:58Z">ACTIVE</Execution>
+                        <ControllerMode dataItemId="mode" sequence="97" timestamp="2026-01-14T11:59:57Z">AUTOMATIC</ControllerMode>
+                      </Events>
+                    </ComponentStream>
+                    <ComponentStream component="Path" componentId="path1">
+                      <Samples>
+                        <PathFeedrate dataItemId="pf" sequence="99" timestamp="2026-01-14T11:59:59Z">2500.5</PathFeedrate>
+                        <SpindleSpeed dataItemId="ss" sequence="95" timestamp="2026-01-14T11:59:55Z">8000</SpindleSpeed>
+                      </Samples>
+                      <Condition>
+                        <Normal dataItemId="system" sequence="50" timestamp="2026-01-14T10:00:00Z" type="SYSTEM"/>
+                      </Condition>
+                    </ComponentStream>
+                  </DeviceStream>
+                </Streams>
+              </MTConnectStreams>
+          expected:
+            outcome: success
+            structure:
+              header:
+                nextSequence: 100
+                firstSequence: 1
+                lastSequence: 99
+              streams:
+                count: 1
+              has_values:
+                - dataItemId: "exec"
+                  value: "ACTIVE"
+                - dataItemId: "pf"
+                  value: 2500.5
+
+    - name: sample_streaming
+      description: "Sample streaming tests"
+      tests:
+        - id: "sample-001"
+          description: "Stream samples with interval"
+          input:
+            url: "http://agent.mtconnect.org/sample?interval=100"
+            duration_ms: 5000
+          expected:
+            outcome: success
+            min_messages: 40
+
+        - id: "sample-002"
+          description: "Historical sample range"
+          input:
+            url: "http://agent.mtconnect.org/sample?from=1000&count=100"
+          expected:
+            outcome: success
+            sequence_range: [1000, 1099]
+
+    - name: condition_handling
+      description: "Condition/alarm tests"
+      tests:
+        - id: "cond-001"
+          description: "Parse fault condition"
+          input:
+            inline: |
+              <Condition>
+                <Fault dataItemId="servo_fault" sequence="500" timestamp="2026-01-14T12:00:00Z"
+                       type="ACTUATOR" nativeCode="SV0401" nativeSeverity="critical">
+                  Servo alarm on X axis
+                </Fault>
+              </Condition>
+          expected:
+            outcome: success
+            condition:
+              level: FAULT
+              type: ACTUATOR
+              nativeCode: "SV0401"
+
+    - name: asset_documents
+      description: "Asset parsing tests"
+      tests:
+        - id: "asset-001"
+          description: "Parse CuttingTool asset"
+          input:
+            file: "test-data/mtconnect/cutting-tool.xml"
+          expected:
+            outcome: success
+            asset_type: CuttingTool
+
+  property_tests:
+    - name: sequence_monotonic
+      description: "Sequence numbers always increase"
+    - name: timestamp_ordering
+      description: "Timestamps correlate with sequences"
+
+  benchmarks:
+    - name: stream_throughput
+      description: "Data items parsed per second"
+      input:
+        generator:
+          type: mtconnect_stream
+          items_per_response: 1000
+      metrics:
+        - type: throughput
+          unit: "items/second"
+          baseline: 100000
+
+    - name: parse_latency
+      description: "Response parse time"
+      metrics:
+        - type: latency
+          percentile: p99
+          unit: "milliseconds"
+          baseline: 10
+
+# =============================================================================
+# QUALITY REQUIREMENTS
+# =============================================================================
+quality:
+  minimum_level: 2
+
+  requirements:
+    conformance:
+      schema_compliance: 100%
+      test_pass_rate: 99%
+
+    performance:
+      throughput_baseline: "100K items/sec"
+      latency_p99: "10ms"
+      streaming_overhead: "< 5%"
+
+    reliability:
+      buffer_overflow_handling: required
+      sequence_gap_detection: required
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories: [throughput, latency, conformance]
+
+  x-manufacturing:
+    real_time:
+      streaming_latency_ms: 100
+      buffer_depth: 131072
+
+    analytics:
+      oee_support: true
+      condition_duration_tracking: true
+      cycle_time_analysis: true
+
+    protocol_conformance:
+      mtconnect_institute_compliant: true
+      schema_version: "2.2"
+
+    interoperability:
+      tested_with:
+        - vendor: "FANUC"
+          product: "FOCAS MTConnect Adapter"
+        - vendor: "Mazak"
+          product: "MTConnect Adapter"
+        - vendor: "Haas"
+          product: "HaasConnect"
+        - vendor: "DMG Mori"
+          product: "CELOS MTConnect"
+        - vendor: "Okuma"
+          product: "MTConnect Adapter"
+        - vendor: "Hurco"
+          product: "MTConnect Agent"

@@ -1,0 +1,970 @@
+# =============================================================================
+# Eclipse Sparkplug B Payload Parser Specification
+# MQTT-based Industrial IoT Protocol
+# =============================================================================
+# This specification defines a parser for Sparkplug B payloads,
+# enabling standardized IIoT communication over MQTT infrastructure.
+# =============================================================================
+
+ups_version: "1.0"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+metadata:
+  id: "urn:ups:parser:sparkplug-b:payload:3.0.0"
+  name: "sparkplug-b-payload"
+  version: "3.0.0"
+  description: |
+    Eclipse Sparkplug B Payload Parser for Industrial IoT.
+
+    Sparkplug provides an interoperability layer on top of MQTT that defines:
+    - Topic namespace structure for SCADA/IIoT applications
+    - Payload encoding using Google Protocol Buffers
+    - State management (birth/death certificates)
+    - Metric data types and metadata
+
+    Key capabilities:
+    - Parse Protobuf-encoded Sparkplug payloads
+    - Handle NBIRTH/NDEATH/DBIRTH/DDEATH/NDATA/DDATA messages
+    - Support for all Sparkplug metric types
+    - Template and dataset support
+    - Compression (GZIP/DEFLATE)
+
+    Target use cases:
+    - SCADA system integration
+    - Industrial edge gateway development
+    - IIoT data collection and analytics
+    - Unified namespace implementations
+    - Cloud-to-edge connectivity
+
+  status: stable
+  domain: "manufacturing-industrial"
+
+  category:
+    primary: "industrial-iot"
+    secondary: ["binary", "streaming", "pub-sub"]
+    data_flow: push
+
+  tags:
+    - sparkplug
+    - mqtt
+    - iiot
+    - scada
+    - protobuf
+    - eclipse
+    - edge
+    - uns
+    - unified-namespace
+
+  references:
+    - type: standard
+      name: "Eclipse Sparkplug Specification"
+      version: "3.0.0"
+      url: "https://sparkplug.eclipse.org/specification/version/3.0/"
+      description: "Official Sparkplug Specification"
+
+    - type: implementation
+      name: "Eclipse Tahu"
+      url: "https://github.com/eclipse/tahu"
+      description: "Reference implementation"
+
+    - type: protobuf
+      name: "Sparkplug Protobuf Schema"
+      url: "https://github.com/eclipse/tahu/blob/master/sparkplug_b/sparkplug_b.proto"
+
+    - type: compatibility
+      name: "MQTT 3.1.1 / 5.0"
+      url: "https://mqtt.org/"
+
+  authors:
+    - name: "Eclipse Foundation"
+      organization: "Eclipse Foundation"
+      url: "https://sparkplug.eclipse.org/"
+      role: "standard_owner"
+
+    - name: "Cirrus Link Solutions"
+      organization: "Cirrus Link Solutions"
+      role: "original_author"
+
+  maintainers:
+    - name: "UPP IIoT Working Group"
+      email: "iiot@upp-registry.org"
+
+  license:
+    type: "EPL-2.0"
+    url: "https://www.eclipse.org/legal/epl-2.0/"
+
+# =============================================================================
+# PARSER DEFINITION
+# =============================================================================
+parser:
+  input:
+    format:
+      type: protobuf
+      schema: |
+        // Sparkplug B Protobuf Schema v3.0
+        syntax = "proto2";
+        package org.eclipse.tahu.protobuf;
+
+        message Payload {
+          // Timestamp at message sending time
+          optional uint64 timestamp = 1;
+
+          // Sequence number
+          optional uint64 seq = 2;
+
+          // UUID for deduplication
+          optional string uuid = 3;
+
+          // Metric data
+          repeated Metric metrics = 4;
+
+          // Body for custom payloads
+          optional bytes body = 5;
+
+          // Extension fields reserved for future use
+          extensions 6 to max;
+        }
+
+        message Metric {
+          // Metric name (required in BIRTH messages)
+          optional string name = 1;
+
+          // Alias (alternative to name for efficiency)
+          optional uint64 alias = 2;
+
+          // Metric timestamp (optional, uses payload timestamp if not set)
+          optional uint64 timestamp = 3;
+
+          // Metric data type
+          optional uint32 datatype = 4;
+
+          // Historical data flag
+          optional bool is_historical = 5;
+
+          // Transient data flag
+          optional bool is_transient = 6;
+
+          // Null value flag
+          optional bool is_null = 7;
+
+          // Metadata
+          optional MetaData metadata = 8;
+
+          // Properties
+          optional PropertySet properties = 9;
+
+          // Value (only one set based on datatype)
+          oneof value {
+            uint32   int_value = 10;
+            uint64   long_value = 11;
+            float    float_value = 12;
+            double   double_value = 13;
+            bool     boolean_value = 14;
+            string   string_value = 15;
+            bytes    bytes_value = 16;
+            DataSet  dataset_value = 17;
+            Template template_value = 18;
+            MetricValueExtension extension_value = 19;
+          }
+        }
+
+        message MetaData {
+          // Content type (MIME)
+          optional string content_type = 1;
+
+          // Size in bytes
+          optional uint64 size = 2;
+
+          // Sequence number for file transfers
+          optional uint64 seq = 3;
+
+          // Filename
+          optional string file_name = 4;
+
+          // File type
+          optional string file_type = 5;
+
+          // MD5 checksum
+          optional string md5 = 6;
+
+          // Multi-part flag
+          optional bool is_multi_part = 7;
+
+          // Description
+          optional string description = 8;
+        }
+
+        message PropertySet {
+          // Property keys
+          repeated string keys = 1;
+
+          // Property values
+          repeated PropertyValue values = 2;
+        }
+
+        message PropertyValue {
+          // Property data type
+          optional uint32 type = 1;
+
+          // Is null flag
+          optional bool is_null = 2;
+
+          oneof value {
+            uint32      int_value = 3;
+            uint64      long_value = 4;
+            float       float_value = 5;
+            double      double_value = 6;
+            bool        boolean_value = 7;
+            string      string_value = 8;
+            PropertySet propertyset_value = 9;
+            PropertySetList propertysets_value = 10;
+            MetricValueExtension extension_value = 11;
+          }
+        }
+
+        message PropertySetList {
+          repeated PropertySet propertyset = 1;
+        }
+
+        message DataSet {
+          // Number of columns
+          optional uint64 num_of_columns = 1;
+
+          // Column names
+          repeated string columns = 2;
+
+          // Column types
+          repeated uint32 types = 3;
+
+          // Rows
+          repeated DataSetRow rows = 4;
+        }
+
+        message DataSetRow {
+          repeated DataSetValue elements = 1;
+        }
+
+        message DataSetValue {
+          oneof value {
+            uint32 int_value = 1;
+            uint64 long_value = 2;
+            float  float_value = 3;
+            double double_value = 4;
+            bool   boolean_value = 5;
+            string string_value = 6;
+            MetricValueExtension extension_value = 7;
+          }
+        }
+
+        message Template {
+          // Template version
+          optional string version = 1;
+
+          // Template metrics
+          repeated Metric metrics = 2;
+
+          // Template parameters
+          repeated Parameter parameters = 3;
+
+          // Template reference (for instances)
+          optional string template_ref = 4;
+
+          // Is definition flag
+          optional bool is_definition = 5;
+        }
+
+        message Parameter {
+          // Parameter name
+          optional string name = 1;
+
+          // Parameter type
+          optional uint32 type = 2;
+
+          oneof value {
+            uint32 int_value = 3;
+            uint64 long_value = 4;
+            float  float_value = 5;
+            double double_value = 6;
+            bool   boolean_value = 7;
+            string string_value = 8;
+            MetricValueExtension extension_value = 9;
+          }
+        }
+
+        message MetricValueExtension {
+          extensions 1 to max;
+        }
+
+    # Sparkplug Data Types
+    data_types:
+      - id: 0
+        name: Unknown
+      - id: 1
+        name: Int8
+        proto_field: int_value
+        size_bytes: 1
+      - id: 2
+        name: Int16
+        proto_field: int_value
+        size_bytes: 2
+      - id: 3
+        name: Int32
+        proto_field: int_value
+        size_bytes: 4
+      - id: 4
+        name: Int64
+        proto_field: long_value
+        size_bytes: 8
+      - id: 5
+        name: UInt8
+        proto_field: int_value
+        size_bytes: 1
+      - id: 6
+        name: UInt16
+        proto_field: int_value
+        size_bytes: 2
+      - id: 7
+        name: UInt32
+        proto_field: int_value
+        size_bytes: 4
+      - id: 8
+        name: UInt64
+        proto_field: long_value
+        size_bytes: 8
+      - id: 9
+        name: Float
+        proto_field: float_value
+        size_bytes: 4
+      - id: 10
+        name: Double
+        proto_field: double_value
+        size_bytes: 8
+      - id: 11
+        name: Boolean
+        proto_field: boolean_value
+        size_bytes: 1
+      - id: 12
+        name: String
+        proto_field: string_value
+        size_bytes: variable
+      - id: 13
+        name: DateTime
+        proto_field: long_value
+        size_bytes: 8
+        description: "UTC milliseconds since Unix epoch"
+      - id: 14
+        name: Text
+        proto_field: string_value
+        size_bytes: variable
+      - id: 15
+        name: UUID
+        proto_field: string_value
+        size_bytes: 36
+      - id: 16
+        name: DataSet
+        proto_field: dataset_value
+        size_bytes: variable
+      - id: 17
+        name: Bytes
+        proto_field: bytes_value
+        size_bytes: variable
+      - id: 18
+        name: File
+        proto_field: bytes_value
+        size_bytes: variable
+      - id: 19
+        name: Template
+        proto_field: template_value
+        size_bytes: variable
+      # Array types (20-31)
+      - id: 20
+        name: Int8Array
+        element_type: Int8
+      - id: 21
+        name: Int16Array
+        element_type: Int16
+      - id: 22
+        name: Int32Array
+        element_type: Int32
+      - id: 23
+        name: Int64Array
+        element_type: Int64
+      - id: 24
+        name: UInt8Array
+        element_type: UInt8
+      - id: 25
+        name: UInt16Array
+        element_type: UInt16
+      - id: 26
+        name: UInt32Array
+        element_type: UInt32
+      - id: 27
+        name: UInt64Array
+        element_type: UInt64
+      - id: 28
+        name: FloatArray
+        element_type: Float
+      - id: 29
+        name: DoubleArray
+        element_type: Double
+      - id: 30
+        name: BooleanArray
+        element_type: Boolean
+      - id: 31
+        name: StringArray
+        element_type: String
+      - id: 32
+        name: DateTimeArray
+        element_type: DateTime
+
+    # Topic Namespace
+    topic_namespace:
+      pattern: "spBv1.0/{group_id}/{message_type}/{edge_node_id}/{device_id?}"
+      components:
+        - name: namespace
+          value: "spBv1.0"
+          description: "Sparkplug B version namespace"
+
+        - name: group_id
+          type: string
+          description: "Logical grouping (e.g., plant, area)"
+
+        - name: message_type
+          type: enum
+          values:
+            # Node Messages
+            - NBIRTH  # Node Birth Certificate
+            - NDEATH  # Node Death Certificate
+            - NDATA   # Node Data
+            - NCMD    # Node Command
+
+            # Device Messages
+            - DBIRTH  # Device Birth Certificate
+            - DDEATH  # Device Death Certificate
+            - DDATA   # Device Data
+            - DCMD    # Device Command
+
+            # SCADA Host Messages
+            - STATE   # SCADA Host State
+
+        - name: edge_node_id
+          type: string
+          description: "Edge node identifier"
+
+        - name: device_id
+          type: string
+          optional: true
+          description: "Device identifier (for D* messages)"
+
+    # Compression
+    compression:
+      supported:
+        - none
+        - gzip
+        - deflate
+      detection: automatic
+      header_byte: true
+
+    encoding:
+      binary: true
+      wire_format: protobuf
+
+    constraints:
+      max_payload_size_mb: 256
+      max_metrics_per_payload: 65535
+      max_template_depth: 10
+      max_dataset_rows: 65535
+
+  output:
+    primary:
+      type: object
+      structure:
+        root: SparkplugPayload
+
+    alternatives:
+      - type: events
+        description: "Metric change event stream"
+      - type: json
+        description: "JSON representation"
+
+    node_types:
+      SparkplugPayload:
+        fields:
+          timestamp: uint64
+          seq: uint64?
+          uuid: string?
+          metrics: Metric[]
+          body: bytes?
+
+      Metric:
+        fields:
+          name: string?
+          alias: uint64?
+          timestamp: uint64?
+          datatype: DataType
+          isHistorical: boolean?
+          isTransient: boolean?
+          isNull: boolean?
+          metadata: MetaData?
+          properties: PropertySet?
+          value: any
+
+      MetaData:
+        fields:
+          contentType: string?
+          size: uint64?
+          seq: uint64?
+          fileName: string?
+          fileType: string?
+          md5: string?
+          isMultiPart: boolean?
+          description: string?
+
+      PropertySet:
+        fields:
+          properties: map<string, PropertyValue>
+
+      DataSet:
+        fields:
+          numOfColumns: uint64
+          columns: string[]
+          types: DataType[]
+          rows: DataSetRow[]
+
+      Template:
+        fields:
+          version: string?
+          metrics: Metric[]
+          parameters: Parameter[]
+          templateRef: string?
+          isDefinition: boolean?
+
+      DataType:
+        enum: [Unknown, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float, Double, Boolean, String, DateTime, Text, UUID, DataSet, Bytes, File, Template, Int8Array, Int16Array, Int32Array, Int64Array, UInt8Array, UInt16Array, UInt32Array, UInt64Array, FloatArray, DoubleArray, BooleanArray, StringArray, DateTimeArray]
+
+    events:
+      - name: node_birth
+        data:
+          groupId: string
+          edgeNodeId: string
+          timestamp: uint64
+          seq: uint64
+          metrics: Metric[]
+
+      - name: node_death
+        data:
+          groupId: string
+          edgeNodeId: string
+          timestamp: uint64
+          bdSeq: uint64
+
+      - name: device_birth
+        data:
+          groupId: string
+          edgeNodeId: string
+          deviceId: string
+          timestamp: uint64
+          seq: uint64
+          metrics: Metric[]
+
+      - name: device_death
+        data:
+          groupId: string
+          edgeNodeId: string
+          deviceId: string
+          timestamp: uint64
+
+      - name: metric_update
+        data:
+          groupId: string
+          edgeNodeId: string
+          deviceId: string?
+          metricName: string
+          alias: uint64?
+          value: any
+          datatype: DataType
+          timestamp: uint64
+          quality: MetricQuality?
+
+      - name: scada_state
+        data:
+          scadaHostId: string
+          state: enum[ONLINE, OFFLINE]
+          timestamp: uint64
+
+    error_format:
+      structure:
+        code: string
+        message: string
+        topic: string?
+        offset: integer?
+
+  modes:
+    - name: primary_host
+      description: "SCADA Primary Host Application"
+      options:
+        subscribe:
+          - "spBv1.0/+/NBIRTH/+"
+          - "spBv1.0/+/NDEATH/+"
+          - "spBv1.0/+/DBIRTH/+/+"
+          - "spBv1.0/+/DDEATH/+/+"
+          - "spBv1.0/+/NDATA/+"
+          - "spBv1.0/+/DDATA/+/+"
+        publish:
+          - "spBv1.0/+/NCMD/+"
+          - "spBv1.0/+/DCMD/+/+"
+          - "STATE/{host_id}"
+
+    - name: edge_node
+      description: "Edge Node (Gateway/PLC)"
+      options:
+        publish:
+          - "spBv1.0/{group}/NBIRTH/{node}"
+          - "spBv1.0/{group}/NDEATH/{node}"
+          - "spBv1.0/{group}/NDATA/{node}"
+          - "spBv1.0/{group}/DBIRTH/{node}/+"
+          - "spBv1.0/{group}/DDEATH/{node}/+"
+          - "spBv1.0/{group}/DDATA/{node}/+"
+        subscribe:
+          - "spBv1.0/{group}/NCMD/{node}"
+          - "spBv1.0/{group}/DCMD/{node}/+"
+          - "STATE/+"
+
+    - name: passive
+      description: "Monitor/Historian mode"
+      options:
+        subscribe: ["spBv1.0/#"]
+        read_only: true
+
+  error_codes:
+    # Protocol errors
+    - code: "SPKB-E001"
+      message: "Invalid topic namespace"
+      severity: error
+
+    - code: "SPKB-E002"
+      message: "Protobuf decode error"
+      severity: error
+
+    - code: "SPKB-E003"
+      message: "Missing NBIRTH before NDATA"
+      severity: error
+
+    - code: "SPKB-E004"
+      message: "Sequence number out of order"
+      severity: warning
+
+    - code: "SPKB-E005"
+      message: "Unknown metric alias"
+      severity: error
+
+    - code: "SPKB-E006"
+      message: "Metric datatype mismatch"
+      severity: error
+
+    - code: "SPKB-E007"
+      message: "Template reference not found"
+      severity: error
+
+    - code: "SPKB-E008"
+      message: "Invalid bdSeq in NDEATH"
+      severity: error
+
+    # Warnings
+    - code: "SPKB-W001"
+      message: "Metric timestamp older than payload timestamp"
+      severity: warning
+
+    - code: "SPKB-W002"
+      message: "Large payload detected"
+      severity: warning
+
+  features:
+    validation:
+      protobuf_validation: true
+      sequence_validation: true
+      birth_certificate_tracking: true
+      alias_resolution: true
+
+    state_management:
+      session_awareness: true
+      birth_certificate_cache: true
+      rebirth_on_reconnect: true
+
+    transformation:
+      decompress: true
+      resolve_aliases: true
+      flatten_templates: true
+
+    interop:
+      - json
+      - opc_ua
+
+# =============================================================================
+# CONFORMANCE TESTING
+# =============================================================================
+conformance:
+  test_imports:
+    - source: "https://github.com/eclipse/tahu/tree/master/conformance"
+      format: sparkplug_tck
+
+  test_groups:
+    - name: payload_parsing
+      description: "Basic payload parsing tests"
+      tests:
+        - id: "payload-001"
+          description: "Parse minimal NBIRTH payload"
+          topic: "spBv1.0/TestGroup/NBIRTH/TestNode"
+          input:
+            # Protobuf-encoded payload (base64)
+            base64: "CAEQABgBIgYKBHRlc3Q="
+          expected:
+            outcome: success
+            structure:
+              timestamp: present
+              seq: 0
+              metrics:
+                count: 1
+
+        - id: "payload-002"
+          description: "Parse NDATA with multiple metrics"
+          topic: "spBv1.0/TestGroup/NDATA/TestNode"
+          input:
+            base64: "CAEQASIXCgp0ZW1wZXJhdHVyZRAJHQAAyEIiFwoIcHJlc3N1cmUQCh0AAFBE"
+          expected:
+            outcome: success
+            metrics:
+              - name: "temperature"
+                datatype: Float
+                value: 100.0
+              - name: "pressure"
+                datatype: Double
+
+        - id: "payload-003"
+          description: "Parse DBIRTH with template"
+          topic: "spBv1.0/TestGroup/DBIRTH/TestNode/Device1"
+          input:
+            file: "test-data/sparkplug/dbirth-template.bin"
+          expected:
+            outcome: success
+            has_template: true
+
+    - name: topic_validation
+      description: "Topic namespace validation tests"
+      tests:
+        - id: "topic-001"
+          description: "Valid NBIRTH topic"
+          topic: "spBv1.0/Plant1/NBIRTH/Gateway1"
+          expected:
+            outcome: success
+            parsed:
+              namespace: "spBv1.0"
+              groupId: "Plant1"
+              messageType: "NBIRTH"
+              edgeNodeId: "Gateway1"
+
+        - id: "topic-002"
+          description: "Valid DDATA topic"
+          topic: "spBv1.0/Plant1/DDATA/Gateway1/PLC1"
+          expected:
+            outcome: success
+            parsed:
+              deviceId: "PLC1"
+
+        - id: "topic-003"
+          description: "Invalid namespace"
+          topic: "spBv2.0/Plant1/NBIRTH/Gateway1"
+          expected:
+            outcome: error
+            error_code: "SPKB-E001"
+
+    - name: state_management
+      description: "Session state management tests"
+      tests:
+        - id: "state-001"
+          description: "Track NBIRTH/NDATA sequence"
+          sequence:
+            - topic: "spBv1.0/Group/NBIRTH/Node"
+              seq: 0
+            - topic: "spBv1.0/Group/NDATA/Node"
+              seq: 1
+            - topic: "spBv1.0/Group/NDATA/Node"
+              seq: 2
+          expected:
+            outcome: success
+
+        - id: "state-002"
+          description: "Detect missing NBIRTH"
+          sequence:
+            - topic: "spBv1.0/Group/NDATA/Node"
+              seq: 1
+          expected:
+            outcome: error
+            error_code: "SPKB-E003"
+
+        - id: "state-003"
+          description: "Handle NDEATH correctly"
+          sequence:
+            - topic: "spBv1.0/Group/NBIRTH/Node"
+              bdSeq: 100
+            - topic: "spBv1.0/Group/NDEATH/Node"
+              bdSeq: 100
+          expected:
+            outcome: success
+            node_state: offline
+
+    - name: data_types
+      description: "Data type parsing tests"
+      tests:
+        - id: "dtype-001"
+          description: "All numeric types"
+          input:
+            file: "test-data/sparkplug/all-numeric-types.bin"
+          expected:
+            outcome: success
+            metrics:
+              - name: "int8_val"
+                datatype: Int8
+              - name: "uint64_val"
+                datatype: UInt64
+
+        - id: "dtype-002"
+          description: "DataSet type"
+          input:
+            file: "test-data/sparkplug/dataset.bin"
+          expected:
+            outcome: success
+            dataset:
+              columns: present
+              rows: "> 0"
+
+        - id: "dtype-003"
+          description: "Template instance"
+          input:
+            file: "test-data/sparkplug/template-instance.bin"
+          expected:
+            outcome: success
+            template:
+              templateRef: present
+              isDefinition: false
+
+    - name: compression
+      description: "Compression handling tests"
+      tests:
+        - id: "compress-001"
+          description: "GZIP compressed payload"
+          input:
+            file: "test-data/sparkplug/gzip-payload.bin"
+            compression: gzip
+          expected:
+            outcome: success
+
+        - id: "compress-002"
+          description: "Uncompressed payload"
+          input:
+            file: "test-data/sparkplug/uncompressed.bin"
+          expected:
+            outcome: success
+
+  property_tests:
+    - name: roundtrip
+      description: "Encode → Decode → Encode produces identical output"
+    - name: sequence_tracking
+      description: "Sequence numbers properly tracked across session"
+
+  benchmarks:
+    - name: payload_throughput
+      description: "Payloads parsed per second"
+      input:
+        generator:
+          type: sparkplug_payloads
+          metrics_per_payload: 100
+      metrics:
+        - type: throughput
+          unit: "payloads/second"
+          baseline: 50000
+
+    - name: metric_throughput
+      description: "Metrics parsed per second"
+      metrics:
+        - type: throughput
+          unit: "metrics/second"
+          baseline: 1000000
+
+    - name: parse_latency
+      description: "Single payload parse time"
+      metrics:
+        - type: latency
+          percentile: p99
+          unit: "microseconds"
+          baseline: 50
+
+# =============================================================================
+# QUALITY REQUIREMENTS
+# =============================================================================
+quality:
+  minimum_level: 2
+
+  requirements:
+    conformance:
+      sparkplug_tck_pass: required
+      test_pass_rate: 100%
+
+    performance:
+      throughput_baseline: "1M metrics/sec"
+      latency_p99: "50us"
+      memory_per_session: "< 10MB"
+
+    reliability:
+      session_recovery: required
+      sequence_gap_handling: required
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories: [throughput, latency, conformance]
+
+  x-manufacturing:
+    real_time:
+      publish_latency_ms: 10
+      subscribe_latency_ms: 10
+
+    state_management:
+      session_persistence: true
+      rebirth_handling: automatic
+
+    protocol_conformance:
+      sparkplug_spec_version: "3.0.0"
+      tck_compliant: true
+
+    uns_support:
+      unified_namespace: true
+      context_aware: true
+
+    interoperability:
+      tested_with:
+        - vendor: "Inductive Automation"
+          product: "Ignition MQTT Engine"
+          version: "8.1"
+        - vendor: "Cirrus Link"
+          product: "MQTT Modules"
+        - vendor: "HiveMQ"
+          product: "Sparkplug Extension"
+        - vendor: "AWS"
+          product: "IoT SiteWise Edge"
+        - vendor: "Microsoft"
+          product: "Azure IoT Operations"
+        - vendor: "Siemens"
+          product: "Industrial Edge"
+
+    mqtt_integration:
+      qos_levels: [0, 1]
+      retained_messages: true
+      will_message_support: true
+      session_expiry: configurable

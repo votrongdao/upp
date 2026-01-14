@@ -1,0 +1,822 @@
+# =============================================================================
+# PackML State Machine Parser Specification
+# ISA-TR88.00.02 - PackML State Model for Packaging Machinery
+# =============================================================================
+# This specification defines a parser for PackML state machine data,
+# enabling standardized equipment state monitoring across packaging lines.
+# =============================================================================
+
+ups_version: "1.0"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+metadata:
+  id: "urn:ups:parser:packml:state-machine:4.0.0"
+  name: "packml-state-machine"
+  version: "4.0.0"
+  description: |
+    PackML (Packaging Machine Language) State Machine Parser.
+
+    Implements the ISA-TR88.00.02 PackML state model for standardized
+    packaging machinery control and monitoring. This parser handles:
+
+    - Machine state transitions (17 standard states)
+    - Mode management (Production, Maintenance, Manual)
+    - Admin states (Producing, Starved, Blocked)
+    - PackTags interface data
+    - OEE (Overall Equipment Effectiveness) metrics
+    - State timing and performance tracking
+
+    Target use cases:
+    - Packaging line SCADA integration
+    - OEE calculation and reporting
+    - Multi-vendor equipment standardization
+    - Production analytics and dashboards
+
+  status: stable
+  domain: "manufacturing-industrial"
+
+  category:
+    primary: "industrial-automation"
+    secondary: ["state-machine", "real-time", "event-driven"]
+    data_flow: push
+
+  tags:
+    - packml
+    - isa88
+    - isa-tr88
+    - packaging
+    - state-machine
+    - oee
+    - omac
+    - plc
+    - scada
+
+  references:
+    - type: standard
+      name: "ISA-TR88.00.02"
+      version: "2015"
+      url: "https://www.isa.org/products/isa-tr88-00-02-2015-machine-and-unit-states-an-"
+      description: "Machine and Unit States: An Implementation Example of ISA-88"
+
+    - type: standard
+      name: "OMAC PackML Guidelines"
+      version: "4.0"
+      url: "https://www.omac.org/packml"
+      description: "Organization for Machine Automation and Control PackML"
+
+    - type: standard
+      name: "OPC UA for PackML"
+      version: "1.01"
+      url: "https://opcfoundation.org/developer-tools/specifications-opc-ua-information-models/packml-isa-tr88/"
+      description: "OPC Foundation PackML Companion Specification"
+
+    - type: standard
+      name: "Weihenstephan Standards"
+      url: "https://www.weihenstephan-standards.com/"
+      description: "Food & Beverage extension to PackML"
+
+  authors:
+    - name: "OMAC"
+      organization: "Organization for Machine Automation and Control"
+      role: "standard_owner"
+
+  maintainers:
+    - name: "UPP Packaging Working Group"
+      email: "packaging@upp-registry.org"
+
+  license:
+    type: "Apache-2.0"
+
+# =============================================================================
+# PARSER DEFINITION
+# =============================================================================
+parser:
+  input:
+    format:
+      type: custom
+      state_machine:
+        # =====================================================================
+        # PackML State Definitions
+        # =====================================================================
+        states:
+          # Acting States (Transient)
+          - name: CLEARING
+            type: acting
+            id: 1
+            description: "Clearing faults, preparing for reset"
+            typical_duration: "seconds"
+            transitions: [STOPPED]
+            entry_command: Clear
+
+          - name: STARTING
+            type: acting
+            id: 3
+            description: "Machine preparing to produce"
+            typical_duration: "seconds to minutes"
+            transitions: [IDLE, ABORTING]
+            entry_command: Start
+
+          - name: EXECUTE
+            type: acting
+            id: 6
+            description: "Machine producing (normal operation)"
+            typical_duration: "continuous"
+            transitions: [COMPLETING, HOLDING, SUSPENDING, STOPPING, ABORTING]
+            entry_command: null  # Automatic from STARTING
+
+          - name: COMPLETING
+            type: acting
+            id: 16
+            description: "Completing current production run"
+            typical_duration: "seconds to minutes"
+            transitions: [COMPLETE, ABORTING]
+            entry_command: Complete
+
+          - name: RESETTING
+            type: acting
+            id: 15
+            description: "Resetting machine to IDLE"
+            typical_duration: "seconds"
+            transitions: [IDLE, ABORTING]
+            entry_command: Reset
+
+          - name: HOLDING
+            type: acting
+            id: 10
+            description: "Bringing machine to held state"
+            typical_duration: "seconds"
+            transitions: [HELD, ABORTING]
+            entry_command: Hold
+
+          - name: UNHOLDING
+            type: acting
+            id: 11
+            description: "Returning from held to execute"
+            typical_duration: "seconds"
+            transitions: [EXECUTE, ABORTING]
+            entry_command: Unhold
+
+          - name: SUSPENDING
+            type: acting
+            id: 12
+            description: "Suspending due to external condition"
+            typical_duration: "seconds"
+            transitions: [SUSPENDED, ABORTING]
+            entry_command: null  # Automatic trigger
+
+          - name: UNSUSPENDING
+            type: acting
+            id: 13
+            description: "Returning from suspended to execute"
+            typical_duration: "seconds"
+            transitions: [EXECUTE, ABORTING]
+            entry_command: Unsuspend
+
+          - name: STOPPING
+            type: acting
+            id: 7
+            description: "Controlled stop"
+            typical_duration: "seconds"
+            transitions: [STOPPED, ABORTING]
+            entry_command: Stop
+
+          - name: ABORTING
+            type: acting
+            id: 8
+            description: "Emergency stop / fault condition"
+            typical_duration: "immediate"
+            transitions: [ABORTED]
+            entry_command: Abort
+
+          # Wait States (Stable)
+          - name: STOPPED
+            type: wait
+            id: 2
+            description: "Machine stopped, ready for clearing/reset"
+            initial: true
+            transitions: [RESETTING, ABORTING]
+            default: true
+
+          - name: IDLE
+            type: wait
+            id: 4
+            description: "Machine idle, ready to start"
+            transitions: [STARTING, STOPPING, ABORTING]
+
+          - name: COMPLETE
+            type: wait
+            id: 17
+            description: "Production run complete"
+            transitions: [RESETTING, STOPPING, ABORTING]
+
+          - name: HELD
+            type: wait
+            id: 5
+            description: "Machine held (operator initiated)"
+            transitions: [UNHOLDING, STOPPING, ABORTING]
+            oee_impact: downtime
+
+          - name: SUSPENDED
+            type: wait
+            id: 14
+            description: "Machine suspended (external trigger)"
+            transitions: [UNSUSPENDING, STOPPING, ABORTING]
+            oee_impact: downtime
+
+          - name: ABORTED
+            type: wait
+            id: 9
+            description: "Machine aborted (fault)"
+            transitions: [CLEARING]
+            oee_impact: downtime
+
+        # =====================================================================
+        # PackML Mode Definitions
+        # =====================================================================
+        modes:
+          - name: PRODUCTION
+            id: 1
+            description: "Normal production mode"
+            allowed_states: all
+            default: true
+
+          - name: MAINTENANCE
+            id: 2
+            description: "Maintenance/service mode"
+            allowed_states: [STOPPED, IDLE, CLEARING, RESETTING, ABORTING, ABORTED]
+
+          - name: MANUAL
+            id: 3
+            description: "Manual control mode"
+            allowed_states: [STOPPED, IDLE, CLEARING, RESETTING, ABORTING, ABORTED]
+
+          - name: SEMI_AUTOMATIC
+            id: 4
+            description: "Step-by-step automatic mode"
+            allowed_states: all
+
+        # =====================================================================
+        # Admin State Definitions (Sub-states of EXECUTE)
+        # =====================================================================
+        admin_states:
+          - name: UNDEFINED
+            id: 0
+            description: "Admin state not defined"
+
+          - name: PRODUCING
+            id: 1
+            description: "Machine producing normally"
+            oee_category: productive
+
+          - name: NOT_PRODUCING
+            id: 2
+            description: "In Execute but not producing"
+            oee_category: unplanned_downtime
+
+          - name: STARVED
+            id: 3
+            description: "Waiting for upstream material"
+            oee_category: blocked_starved
+            cause: upstream
+
+          - name: BLOCKED
+            id: 4
+            description: "Blocked by downstream"
+            oee_category: blocked_starved
+            cause: downstream
+
+        # =====================================================================
+        # Command Definitions
+        # =====================================================================
+        commands:
+          - name: Clear
+            id: 1
+            from_states: [ABORTED]
+            target_state: CLEARING
+
+          - name: Reset
+            id: 2
+            from_states: [COMPLETE, STOPPED]
+            target_state: RESETTING
+
+          - name: Start
+            id: 3
+            from_states: [IDLE]
+            target_state: STARTING
+
+          - name: Stop
+            id: 4
+            from_states: [STARTING, EXECUTE, COMPLETING, HELD, SUSPENDED, HOLDING, UNHOLDING, SUSPENDING, UNSUSPENDING]
+            target_state: STOPPING
+
+          - name: Hold
+            id: 5
+            from_states: [EXECUTE]
+            target_state: HOLDING
+
+          - name: Unhold
+            id: 6
+            from_states: [HELD]
+            target_state: UNHOLDING
+
+          - name: Suspend
+            id: 7
+            from_states: [EXECUTE]
+            target_state: SUSPENDING
+            automatic: true
+
+          - name: Unsuspend
+            id: 8
+            from_states: [SUSPENDED]
+            target_state: UNSUSPENDING
+
+          - name: Abort
+            id: 9
+            from_states: all_except[ABORTED, CLEARING]
+            target_state: ABORTING
+            priority: highest
+
+          - name: Complete
+            id: 10
+            from_states: [EXECUTE]
+            target_state: COMPLETING
+            automatic: true
+
+        # =====================================================================
+        # State Transition Timing
+        # =====================================================================
+        timing:
+          state_change_timestamp: true
+          state_duration_tracking: true
+          transition_timeout_ms: 30000
+          watchdog_enabled: true
+
+    # PackTags Interface (OPC-UA compatible)
+    packtags:
+      # Admin Tags
+      admin:
+        - name: ProdDefectCount
+          type: DINT
+          description: "Defective products this cycle"
+
+        - name: ProdProcessedCount
+          type: DINT[]
+          array_size: equipment_modules
+          description: "Products processed per module"
+
+        - name: AccTimeSinceLastStateChange
+          type: TIME
+          description: "Time since last state change"
+
+        - name: ExeTimeSinceLastProdCount
+          type: TIME
+          description: "Time since last product count"
+
+        - name: MachDesignSpeed
+          type: REAL
+          description: "Design speed (products/minute)"
+
+        - name: CurMachSpeed
+          type: REAL
+          description: "Current speed (products/minute)"
+
+        - name: SetMachSpeed
+          type: REAL
+          description: "Target speed (products/minute)"
+
+      # Status Tags
+      status:
+        - name: StateCurrent
+          type: DINT
+          description: "Current PackML state ID"
+
+        - name: StateCurrentStr
+          type: STRING
+          description: "Current state name"
+
+        - name: ModeCurrent
+          type: DINT
+          description: "Current mode ID"
+
+        - name: ModeCurrentStr
+          type: STRING
+          description: "Current mode name"
+
+        - name: UnitModeChangeRequest
+          type: BOOL
+          description: "Mode change requested"
+
+        - name: UnitModeRequested
+          type: DINT
+          description: "Requested mode ID"
+
+        - name: RemoteInterface
+          type: DINT[]
+          description: "Remote command interface status"
+
+        - name: ProductID
+          type: DINT
+          description: "Current product identifier"
+
+        - name: ProductIDString
+          type: STRING
+          description: "Current product name"
+
+      # Command Tags
+      command:
+        - name: CntrlCmd
+          type: DINT
+          description: "Control command (1=Start, 2=Stop, etc.)"
+
+        - name: CmdChangeRequest
+          type: BOOL
+          description: "Command change pending"
+
+        - name: CntrlCmdParameter
+          type: DINT
+          description: "Command parameter value"
+
+    encoding:
+      # Can be received via multiple protocols
+      protocols:
+        - type: opc_ua
+          namespace: "http://opcfoundation.org/UA/PackML/"
+          node_set: "Opc.Ua.PackML.NodeSet2.xml"
+
+        - type: json
+          schema: "packml-state.json"
+
+        - type: binary
+          format: plc_native
+
+  output:
+    primary:
+      type: events
+      description: "State change event stream"
+
+    alternatives:
+      - type: object
+        description: "Current state snapshot"
+      - type: ast
+        description: "Full state history tree"
+
+    events:
+      - name: state_change
+        data:
+          previousState: StateName
+          previousStateId: integer
+          currentState: StateName
+          currentStateId: integer
+          timestamp: datetime
+          duration: duration  # Time in previous state
+          mode: ModeName
+          cause: string?
+
+      - name: mode_change
+        data:
+          previousMode: ModeName
+          currentMode: ModeName
+          timestamp: datetime
+          requestedBy: string
+
+      - name: admin_state_change
+        data:
+          previousAdminState: AdminStateName
+          currentAdminState: AdminStateName
+          timestamp: datetime
+          reason: string?
+
+      - name: command_received
+        data:
+          command: CommandName
+          commandId: integer
+          source: string
+          timestamp: datetime
+          parameter: any?
+
+      - name: command_executed
+        data:
+          command: CommandName
+          result: enum[success, rejected, timeout]
+          message: string?
+
+      - name: production_count
+        data:
+          goodCount: integer
+          defectCount: integer
+          timestamp: datetime
+
+      - name: speed_change
+        data:
+          previousSpeed: float
+          currentSpeed: float
+          setSpeed: float
+          timestamp: datetime
+
+      - name: oee_update
+        data:
+          availability: float
+          performance: float
+          quality: float
+          oee: float
+          timestamp: datetime
+          period: duration
+
+    node_types:
+      PackMLState:
+        fields:
+          machine_id: string
+          current_state: StateName
+          current_state_id: integer
+          current_mode: ModeName
+          current_mode_id: integer
+          admin_state: AdminStateName
+          state_timestamp: datetime
+          state_duration: duration
+          good_count: integer
+          defect_count: integer
+          current_speed: float
+          design_speed: float
+          alarms_active: integer
+
+      StateName:
+        enum: [CLEARING, STOPPED, STARTING, IDLE, SUSPENDED, EXECUTE, STOPPING, ABORTING, ABORTED, HOLDING, HELD, UNHOLDING, COMPLETING, COMPLETE, RESETTING, SUSPENDING, UNSUSPENDING]
+
+      ModeName:
+        enum: [PRODUCTION, MAINTENANCE, MANUAL, SEMI_AUTOMATIC]
+
+      AdminStateName:
+        enum: [UNDEFINED, PRODUCING, NOT_PRODUCING, STARVED, BLOCKED]
+
+      CommandName:
+        enum: [Clear, Reset, Start, Stop, Hold, Unhold, Suspend, Unsuspend, Abort, Complete]
+
+    error_format:
+      structure:
+        code: string
+        message: string
+        state: StateName
+        expected_transitions: StateName[]
+
+  modes:
+    - name: monitoring
+      description: "Read-only state monitoring"
+      options:
+        capture_events: true
+        compute_oee: true
+
+    - name: control
+      description: "State control with commands"
+      options:
+        send_commands: true
+        validate_transitions: true
+
+    - name: simulation
+      description: "State machine simulation"
+      options:
+        simulate: true
+        time_compression: configurable
+
+  error_codes:
+    - code: "PACKML-E001"
+      message: "Invalid state transition"
+      severity: error
+      category: state_machine
+
+    - code: "PACKML-E002"
+      message: "Command not allowed in current state"
+      severity: error
+      category: command
+
+    - code: "PACKML-E003"
+      message: "Command not allowed in current mode"
+      severity: error
+      category: command
+
+    - code: "PACKML-E004"
+      message: "State transition timeout"
+      severity: warning
+      category: timing
+
+    - code: "PACKML-E005"
+      message: "Unknown state ID received"
+      severity: error
+      category: protocol
+
+    - code: "PACKML-W001"
+      message: "Extended state duration detected"
+      severity: warning
+      category: timing
+
+  features:
+    validation:
+      state_transition_validation: true
+      mode_state_validation: true
+      timing_validation: true
+
+    analytics:
+      oee_calculation: true
+      state_duration_tracking: true
+      transition_counting: true
+
+    interop:
+      - opc_ua
+      - mqtt
+      - modbus
+
+# =============================================================================
+# CONFORMANCE TESTING
+# =============================================================================
+conformance:
+  test_groups:
+    - name: state_transitions
+      description: "Valid state transition tests"
+      tests:
+        - id: "trans-001"
+          description: "STOPPED → RESETTING → IDLE sequence"
+          sequence:
+            - state: STOPPED
+              command: Reset
+            - state: RESETTING
+              auto_transition: true
+            - state: IDLE
+          expected:
+            outcome: success
+
+        - id: "trans-002"
+          description: "Full production cycle"
+          sequence:
+            - state: STOPPED
+              command: Reset
+            - state: IDLE
+              command: Start
+            - state: EXECUTE
+              admin_state: PRODUCING
+              command: Complete
+            - state: COMPLETE
+              command: Reset
+            - state: IDLE
+          expected:
+            outcome: success
+
+        - id: "trans-003"
+          description: "Hold/Unhold sequence"
+          sequence:
+            - state: EXECUTE
+              command: Hold
+            - state: HELD
+              duration_check: "> 0"
+              command: Unhold
+            - state: EXECUTE
+          expected:
+            outcome: success
+
+        - id: "trans-004"
+          description: "Emergency abort from any state"
+          states: [IDLE, EXECUTE, HELD, SUSPENDED, COMPLETING]
+          for_each:
+            command: Abort
+            expect_state: ABORTED
+          expected:
+            outcome: success
+
+    - name: invalid_transitions
+      description: "Invalid state transition tests"
+      tests:
+        - id: "invalid-001"
+          description: "Cannot Start from STOPPED"
+          sequence:
+            - state: STOPPED
+              command: Start
+          expected:
+            outcome: error
+            error_code: "PACKML-E001"
+
+        - id: "invalid-002"
+          description: "Cannot Reset from EXECUTE"
+          sequence:
+            - state: EXECUTE
+              command: Reset
+          expected:
+            outcome: error
+            error_code: "PACKML-E002"
+
+    - name: mode_tests
+      description: "Mode-related tests"
+      tests:
+        - id: "mode-001"
+          description: "Mode change from STOPPED"
+          sequence:
+            - state: STOPPED
+              mode: PRODUCTION
+              change_mode: MAINTENANCE
+            - mode: MAINTENANCE
+          expected:
+            outcome: success
+
+        - id: "mode-002"
+          description: "Cannot change mode during EXECUTE"
+          sequence:
+            - state: EXECUTE
+              mode: PRODUCTION
+              change_mode: MAINTENANCE
+          expected:
+            outcome: error
+            error_code: "PACKML-E003"
+
+    - name: oee_calculation
+      description: "OEE metric tests"
+      tests:
+        - id: "oee-001"
+          description: "OEE calculation accuracy"
+          input:
+            planned_production_time: 480  # minutes
+            actual_production_time: 420  # minutes
+            ideal_cycle_time: 1.0  # minutes/unit
+            total_count: 380
+            good_count: 370
+          expected:
+            availability: 0.875  # 420/480
+            performance: 0.905  # (380*1.0)/420
+            quality: 0.974  # 370/380
+            oee: 0.772  # 0.875 * 0.905 * 0.974
+
+  property_tests:
+    - name: state_machine_completeness
+      description: "All states reachable, no deadlocks"
+    - name: command_safety
+      description: "Abort always reaches ABORTED"
+
+  benchmarks:
+    - name: event_throughput
+      description: "State change events per second"
+      metrics:
+        - type: throughput
+          unit: "events/second"
+          baseline: 10000
+
+    - name: oee_calculation_latency
+      description: "OEE calculation time"
+      metrics:
+        - type: latency
+          unit: "microseconds"
+          baseline: 100
+
+# =============================================================================
+# QUALITY REQUIREMENTS
+# =============================================================================
+quality:
+  minimum_level: 2
+
+  requirements:
+    conformance:
+      test_pass_rate: 100%
+      omac_certified: recommended
+
+    performance:
+      event_latency_p99: "1ms"
+      state_change_overhead: "< 100us"
+
+    safety:
+      abort_always_succeeds: required
+      watchdog_support: required
+
+# =============================================================================
+# EXTENSIONS
+# =============================================================================
+extensions:
+  x-upp:
+    challenge_arena:
+      enabled: true
+      categories: [conformance, latency]
+
+  x-manufacturing:
+    real_time:
+      deterministic: true
+      max_jitter_us: 100
+
+    oee_support:
+      availability_tracking: true
+      performance_tracking: true
+      quality_tracking: true
+      downtime_categorization: true
+
+    protocol_conformance:
+      omac_packml_v4: true
+      opc_ua_packml: true
+      weihenstephan: optional
+
+    interoperability:
+      tested_with:
+        - vendor: "Rockwell Automation"
+          product: "FactoryTalk Batch"
+        - vendor: "Siemens"
+          product: "TIA Portal PackML Library"
+        - vendor: "B&R"
+          product: "mapp PackML"
+        - vendor: "Beckhoff"
+          product: "TF8550 PackML"
+        - vendor: "Omron"
+          product: "Sysmac PackML"
