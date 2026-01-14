@@ -26,6 +26,16 @@ Create an industry-standard specification format for parsers that enables:
 | [UPS JSON Schema](specs/schema/ups-schema-v1.0.json) | Machine-readable schema for validation |
 | [Design Rationale](docs/design/DESIGN-RATIONALE.md) | Architectural decisions and justifications |
 
+### Visual Guides (Start Here!)
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [Quick Start Guide](docs/visual/QUICK-START.md) | Get started in 5 minutes | Everyone |
+| [Visual Overview](docs/visual/VISUAL-OVERVIEW.md) | Diagrams explaining UPS concepts | Everyone |
+| [Executive Summary](docs/visual/EXECUTIVE-SUMMARY.md) | Non-technical overview | Business/Management |
+| [Simple Samples](docs/visual/SIMPLE-SAMPLES.md) | Step-by-step examples | Developers |
+| [Class Diagrams](docs/visual/CLASS-DIAGRAMS.md) | Architecture & relationships | Architects |
+
 ### Guides
 
 | Document | Description |
@@ -56,8 +66,14 @@ upp/
 │   │   └── DESIGN-RATIONALE.md         # Design decisions
 │   ├── guides/
 │   │   └── ADOPTION-GUIDE.md           # Adoption roadmap
-│   └── catalog/
-│       └── PARSER-CATALOG.md           # 1000+ parser examples
+│   ├── catalog/
+│   │   └── PARSER-CATALOG.md           # 1000+ parser examples
+│   └── visual/                         # 📊 Visual documentation
+│       ├── QUICK-START.md              # 5-minute quick start
+│       ├── VISUAL-OVERVIEW.md          # Diagrams & concepts
+│       ├── EXECUTIVE-SUMMARY.md        # Non-technical overview
+│       ├── SIMPLE-SAMPLES.md           # Step-by-step examples
+│       └── CLASS-DIAGRAMS.md           # Architecture diagrams
 └── specs/
     ├── schema/
     │   └── ups-schema-v1.0.json        # JSON Schema
@@ -221,6 +237,9 @@ We welcome contributions! Areas where you can help:
 - [x] Example specs (JSON, CSV, HTTP, Protobuf)
 - [x] Parser catalog (1000+ examples)
 - [x] Design documentation
+- [x] Visual guides & diagrams (Mermaid)
+- [x] Executive summary for non-technical stakeholders
+- [x] Quick start guide
 
 ### Phase 2: Tooling
 - [ ] CLI validator
@@ -243,10 +262,17 @@ We welcome contributions! Areas where you can help:
 
 ## 🔗 Links
 
+### Start Here
+- **Quick Start**: [QUICK-START.md](docs/visual/QUICK-START.md) - Get started in 5 minutes
+- **Visual Overview**: [VISUAL-OVERVIEW.md](docs/visual/VISUAL-OVERVIEW.md) - Understand UPS with diagrams
+- **Executive Summary**: [EXECUTIVE-SUMMARY.md](docs/visual/EXECUTIVE-SUMMARY.md) - For non-technical readers
+
+### Technical Reference
 - **Specification**: [UPS-SPECIFICATION-v1.0.md](docs/specification/UPS-SPECIFICATION-v1.0.md)
 - **JSON Schema**: [ups-schema-v1.0.json](specs/schema/ups-schema-v1.0.json)
 - **Examples**: [specs/examples/](specs/examples/)
 - **Parser Catalog**: [PARSER-CATALOG.md](docs/catalog/PARSER-CATALOG.md)
+- **Class Diagrams**: [CLASS-DIAGRAMS.md](docs/visual/CLASS-DIAGRAMS.md)
 
 ---
 
