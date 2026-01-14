@@ -1,0 +1,424 @@
+# Universal Parser Specification
+# HTTP/1.1 Request Parser
+# Example demonstrating PROTOCOL parsing with state machine
+
+$schema: "https://universalparser.org/schema/ups/v1.0/ups-schema.json"
+ups_version: "1.0"
+
+metadata:
+  id: "urn:ups:parser:ietf:http-request:rfc7230:1.0.0"
+  name: "http-request-parser"
+  display_name: "HTTP/1.1 Request Parser"
+  version: "1.0.0"
+  status: stable
+
+  category:
+    primary: text
+    secondary:
+      - streaming
+      - hybrid
+    data_flow: push
+
+  domain: "network-protocol"
+  tags:
+    - http
+    - http11
+    - rfc7230
+    - web
+    - protocol
+    - request
+
+  description: |
+    Parser for HTTP/1.1 request messages as defined in RFC 7230.
+    Handles request line, headers, and body parsing.
+
+  license:
+    spdx: "CC-BY-4.0"
+
+  references:
+    - type: rfc
+      identifier: "RFC 7230"
+      title: "HTTP/1.1 Message Syntax and Routing"
+      url: "https://www.rfc-editor.org/rfc/rfc7230"
+      normative: true
+    - type: rfc
+      identifier: "RFC 7231"
+      title: "HTTP/1.1 Semantics and Content"
+      url: "https://www.rfc-editor.org/rfc/rfc7231"
+      normative: true
+
+parser:
+  input:
+    format:
+      type: abnf
+      variant: rfc5234
+      grammar: |
+        ; HTTP/1.1 Request Grammar (RFC 7230)
+
+        HTTP-message = request-line *( header-field CRLF ) CRLF [ message-body ]
+
+        request-line = method SP request-target SP HTTP-version CRLF
+
+        method = token
+        request-target = origin-form / absolute-form / authority-form / asterisk-form
+        origin-form = absolute-path [ "?" query ]
+        absolute-form = absolute-URI
+        authority-form = authority
+        asterisk-form = "*"
+
+        HTTP-version = HTTP-name "/" DIGIT "." DIGIT
+        HTTP-name = %x48.54.54.50 ; "HTTP"
+
+        header-field = field-name ":" OWS field-value OWS
+        field-name = token
+        field-value = *( field-content / obs-fold )
+        field-content = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+        field-vchar = VCHAR / obs-text
+        obs-fold = CRLF 1*( SP / HTAB )
+        obs-text = %x80-FF
+
+        message-body = *OCTET
+
+        ; Common rules
+        token = 1*tchar
+        tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+              / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+              / DIGIT / ALPHA
+
+        OWS = *( SP / HTAB )
+        RWS = 1*( SP / HTAB )
+        BWS = OWS
+
+        CRLF = CR LF
+        SP = %x20
+        HTAB = %x09
+        CR = %x0D
+        LF = %x0A
+        VCHAR = %x21-7E
+        DIGIT = %x30-39
+        ALPHA = %x41-5A / %x61-7A
+        OCTET = %x00-FF
+
+      entry_rule: HTTP-message
+
+    encoding:
+      default: utf-8
+      supported:
+        - utf-8
+        - iso-8859-1
+      newline: crlf
+
+    streaming:
+      supported: true
+      mode: chunked
+      chunk_boundaries: message
+      buffering:
+        required: true
+        max_buffer_size: 8192
+        lookahead: 4
+
+    framing:
+      type: header-based
+      delimiter:
+        end: "\r\n\r\n"
+
+    constraints:
+      max_size: 10485760
+      max_depth: 1
+
+  output:
+    primary:
+      type: ast
+      schema_type: json-schema
+      schema:
+        type: object
+        required: [method, target, version, headers]
+        properties:
+          method:
+            type: string
+            enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, CONNECT, TRACE]
+          target:
+            type: object
+            properties:
+              raw:
+                type: string
+              path:
+                type: string
+              query:
+                type: string
+              queryParams:
+                type: object
+                additionalProperties:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+          version:
+            type: string
+            pattern: "^HTTP/[0-9]\\.[0-9]$"
+          headers:
+            type: array
+            items:
+              type: object
+              required: [name, value]
+              properties:
+                name:
+                  type: string
+                value:
+                  type: string
+                rawValue:
+                  type: string
+          headersMap:
+            type: object
+            additionalProperties:
+              oneOf:
+                - type: string
+                - type: array
+                  items:
+                    type: string
+          body:
+            type: object
+            properties:
+              raw:
+                type: string
+              size:
+                type: integer
+              contentType:
+                type: string
+          contentLength:
+            type: integer
+          transferEncoding:
+            type: string
+          isChunked:
+            type: boolean
+
+    errors:
+      codes:
+        - code: HTTP001
+          message: "Invalid request line"
+          severity: error
+        - code: HTTP002
+          message: "Invalid HTTP method"
+          severity: error
+        - code: HTTP003
+          message: "Invalid request target"
+          severity: error
+        - code: HTTP004
+          message: "Invalid HTTP version"
+          severity: error
+        - code: HTTP005
+          message: "Invalid header"
+          severity: error
+        - code: HTTP006
+          message: "Header too large"
+          severity: error
+        - code: HTTP007
+          message: "Missing Host header"
+          severity: error
+        - code: HTTP008
+          message: "Invalid Content-Length"
+          severity: error
+        - code: HTTP009
+          message: "Body too large"
+          severity: error
+
+  modes:
+    - id: strict
+      name: "Strict Mode"
+      description: "Strictly follows RFC 7230"
+      default: true
+      options:
+        require_host_header: true
+        allow_obs_fold: false
+
+    - id: lenient
+      name: "Lenient Mode"
+      description: "Accepts common deviations"
+      options:
+        require_host_header: false
+        allow_obs_fold: true
+        allow_lf_only: true
+
+  # State machine for HTTP request parsing
+  state_machine:
+    states:
+      - name: start
+        description: "Initial state, waiting for request line"
+
+      - name: method
+        description: "Parsing HTTP method"
+
+      - name: target
+        description: "Parsing request target (URI)"
+
+      - name: version
+        description: "Parsing HTTP version"
+
+      - name: headers
+        description: "Parsing headers"
+
+      - name: header_name
+        description: "Parsing header name"
+
+      - name: header_value
+        description: "Parsing header value"
+
+      - name: body
+        description: "Reading message body"
+
+      - name: chunked_size
+        description: "Reading chunk size (for chunked encoding)"
+
+      - name: chunked_data
+        description: "Reading chunk data"
+
+      - name: complete
+        description: "Request fully parsed"
+
+      - name: error
+        description: "Parse error state"
+
+    initial_state: start
+
+    terminal_states:
+      - complete
+      - error
+
+    transitions:
+      - from: start
+        to: method
+        trigger: "any-char"
+        guard: "is_token_char"
+
+      - from: method
+        to: target
+        trigger: "SP"
+
+      - from: target
+        to: version
+        trigger: "SP"
+
+      - from: version
+        to: headers
+        trigger: "CRLF"
+
+      - from: headers
+        to: header_name
+        trigger: "token-char"
+
+      - from: headers
+        to: body
+        trigger: "CRLF"
+        guard: "has_body"
+
+      - from: headers
+        to: complete
+        trigger: "CRLF"
+        guard: "!has_body"
+
+      - from: header_name
+        to: header_value
+        trigger: ":"
+
+      - from: header_value
+        to: headers
+        trigger: "CRLF"
+
+      - from: body
+        to: complete
+        trigger: "content_length_reached"
+
+      - from: body
+        to: chunked_size
+        trigger: "start"
+        guard: "is_chunked"
+
+      - from: chunked_size
+        to: chunked_data
+        trigger: "CRLF"
+
+      - from: chunked_data
+        to: chunked_size
+        trigger: "CRLF"
+
+      - from: chunked_size
+        to: complete
+        trigger: "zero-size"
+
+  features:
+    validation:
+      semantic_validation: true
+
+    transformation:
+      normalization: true
+
+    interop:
+      - http2
+      - http3
+
+conformance:
+  version: "1.0.0"
+
+  test_vectors:
+    - id: simple-get
+      name: "Simple GET request"
+      category: valid
+      input:
+        inline: "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+      expected:
+        success:
+          ast:
+            method: "GET"
+            target:
+              path: "/"
+            version: "HTTP/1.1"
+
+    - id: post-with-body
+      name: "POST with JSON body"
+      category: valid
+      input:
+        inline: |
+          POST /api/users HTTP/1.1
+          Host: api.example.com
+          Content-Type: application/json
+          Content-Length: 27
+
+          {"name":"John","age":30}
+      expected:
+        success:
+          ast:
+            method: "POST"
+            contentLength: 27
+
+    - id: invalid-method
+      name: "Invalid HTTP method"
+      category: invalid
+      input:
+        inline: "INVALID / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+      expected:
+        error:
+          code: HTTP002
+
+  property_tests:
+    - id: no-crash
+      name: "No crash on any input"
+      property: no-crash
+      iterations: 100000
+
+quality:
+  performance:
+    throughput:
+      minimum_mbps: 200
+      target_mbps: 1000
+    latency:
+      p99_max_us: 500
+
+  security:
+    vulnerability_tolerance:
+      critical: 0
+      high: 0
+    required_protections:
+      - dos-protection
+      - request-smuggling-protection
+      - header-injection-protection

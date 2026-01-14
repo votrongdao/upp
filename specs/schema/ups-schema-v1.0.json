@@ -1,0 +1,1293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://universalparser.org/schema/ups/v1.0/ups-schema.json",
+  "title": "Universal Parser Specification (UPS) Schema",
+  "description": "An open, universal, and customizable schema for defining any parser specification. Designed to become an industry standard for parser interoperability.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["ups_version", "metadata", "parser"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Reference to the UPS schema version"
+    },
+    "ups_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Version of UPS schema being used",
+      "examples": ["1.0", "1.1", "2.0"]
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "parser": {
+      "$ref": "#/$defs/ParserDefinition"
+    },
+    "conformance": {
+      "$ref": "#/$defs/ConformanceSuite"
+    },
+    "quality": {
+      "$ref": "#/$defs/QualityRequirements"
+    },
+    "extensions": {
+      "$ref": "#/$defs/Extensions"
+    }
+  },
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "description": "Metadata about the parser specification",
+      "required": ["id", "name", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uri",
+          "description": "Globally unique identifier (URI format recommended)",
+          "examples": ["urn:ups:parser:json:rfc8259", "https://universalparser.org/specs/json/1.0"]
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
+          "minLength": 2,
+          "maxLength": 64,
+          "description": "Human-readable name in kebab-case",
+          "examples": ["json-parser", "http-request-parser", "protobuf-wire-format"]
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Human-friendly display name",
+          "examples": ["JSON Parser", "HTTP/1.1 Request Parser"]
+        },
+        "version": {
+          "$ref": "#/$defs/SemanticVersion"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "experimental", "stable", "deprecated", "retired"],
+          "default": "draft",
+          "description": "Maturity status of this specification"
+        },
+        "category": {
+          "$ref": "#/$defs/ParserCategory"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Problem domain",
+          "examples": ["data-interchange", "network-protocol", "programming-language", "configuration", "markup", "binary-format"]
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "uniqueItems": true,
+          "description": "Searchable tags",
+          "examples": [["json", "rfc8259", "text", "data-interchange"]]
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description (plain text or markdown)"
+        },
+        "long_description": {
+          "type": "string",
+          "description": "Detailed description in markdown format"
+        },
+        "license": {
+          "$ref": "#/$defs/License"
+        },
+        "authors": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Author"}
+        },
+        "maintainers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Author"}
+        },
+        "references": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Reference"},
+          "description": "Standards, RFCs, and other references"
+        },
+        "supersedes": {
+          "type": "array",
+          "items": {"type": "string", "format": "uri"},
+          "description": "Previous spec versions this supersedes"
+        },
+        "superseded_by": {
+          "type": "string",
+          "format": "uri",
+          "description": "Newer spec that supersedes this one"
+        },
+        "related": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/RelatedSpec"}
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ParserCategory": {
+      "type": "object",
+      "description": "Categorization of the parser type",
+      "required": ["primary"],
+      "properties": {
+        "primary": {
+          "type": "string",
+          "enum": [
+            "text",
+            "binary",
+            "structured",
+            "streaming",
+            "hybrid",
+            "incremental",
+            "declarative"
+          ]
+        },
+        "secondary": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "text",
+              "binary",
+              "structured",
+              "streaming",
+              "hybrid",
+              "incremental",
+              "declarative",
+              "context-free",
+              "context-sensitive",
+              "recursive-descent",
+              "lr",
+              "ll",
+              "peg",
+              "packrat",
+              "earley",
+              "glr",
+              "combinator"
+            ]
+          }
+        },
+        "data_flow": {
+          "type": "string",
+          "enum": ["pull", "push", "both"],
+          "description": "Data flow model: pull (parser requests data), push (data pushed to parser), or both"
+        }
+      }
+    },
+    "ParserDefinition": {
+      "type": "object",
+      "description": "Core parser definition",
+      "required": ["input", "output"],
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/InputDefinition"
+        },
+        "output": {
+          "$ref": "#/$defs/OutputDefinition"
+        },
+        "modes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ParserMode"},
+          "description": "Different parsing modes (strict, lenient, etc.)"
+        },
+        "features": {
+          "$ref": "#/$defs/ParserFeatures"
+        },
+        "error_handling": {
+          "$ref": "#/$defs/ErrorHandling"
+        },
+        "state_machine": {
+          "$ref": "#/$defs/StateMachine"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ParserDependency"},
+          "description": "Other parsers this depends on (for composed parsers)"
+        }
+      }
+    },
+    "InputDefinition": {
+      "type": "object",
+      "description": "Definition of parser input",
+      "required": ["format"],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/GrammarDefinition"
+        },
+        "encoding": {
+          "$ref": "#/$defs/EncodingSpec"
+        },
+        "streaming": {
+          "$ref": "#/$defs/StreamingSpec"
+        },
+        "framing": {
+          "$ref": "#/$defs/FramingSpec"
+        },
+        "constraints": {
+          "$ref": "#/$defs/InputConstraints"
+        },
+        "preprocessing": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PreprocessingStep"},
+          "description": "Preprocessing steps before parsing"
+        }
+      }
+    },
+    "GrammarDefinition": {
+      "type": "object",
+      "description": "Formal grammar definition",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "abnf",
+            "ebnf",
+            "peg",
+            "regex",
+            "antlr4",
+            "yacc",
+            "bison",
+            "tree-sitter",
+            "kaitai",
+            "asn1",
+            "protobuf-schema",
+            "json-schema",
+            "xml-schema",
+            "relaxng",
+            "custom",
+            "prose",
+            "reference"
+          ],
+          "description": "Grammar notation type"
+        },
+        "variant": {
+          "type": "string",
+          "description": "Specific variant of the grammar type",
+          "examples": ["iso-14977", "w3c", "antlr", "posix-extended", "pcre", "ecmascript"]
+        },
+        "grammar": {
+          "type": "string",
+          "description": "Inline grammar definition"
+        },
+        "grammar_file": {
+          "type": "string",
+          "format": "uri-reference",
+          "description": "Reference to external grammar file"
+        },
+        "grammar_files": {
+          "type": "array",
+          "items": {"type": "string", "format": "uri-reference"},
+          "description": "Multiple grammar files (for modular grammars)"
+        },
+        "entry_rule": {
+          "type": "string",
+          "description": "Name of the entry/start rule"
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {"type": "string", "format": "uri"},
+              "rules": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "description": "Import rules from other grammars"
+        },
+        "binary_structure": {
+          "$ref": "#/$defs/BinaryStructure",
+          "description": "For binary formats, structural definition"
+        }
+      },
+      "oneOf": [
+        {"required": ["grammar"]},
+        {"required": ["grammar_file"]},
+        {"required": ["grammar_files"]},
+        {"required": ["binary_structure"]}
+      ]
+    },
+    "BinaryStructure": {
+      "type": "object",
+      "description": "Binary format structure definition",
+      "properties": {
+        "endianness": {
+          "type": "string",
+          "enum": ["big", "little", "native", "configurable"],
+          "default": "big"
+        },
+        "alignment": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Byte alignment requirement"
+        },
+        "fields": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/BinaryField"}
+        },
+        "magic_bytes": {
+          "type": "object",
+          "properties": {
+            "offset": {"type": "integer", "minimum": 0},
+            "bytes": {"type": "string", "pattern": "^([0-9a-fA-F]{2})+$"},
+            "mask": {"type": "string", "pattern": "^([0-9a-fA-F]{2})+$"}
+          },
+          "description": "Magic bytes for format identification"
+        },
+        "variable_length": {
+          "type": "boolean",
+          "description": "Whether the format has variable length"
+        },
+        "length_field": {
+          "type": "string",
+          "description": "Field name that contains total length"
+        }
+      }
+    },
+    "BinaryField": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {
+          "type": "string",
+          "enum": [
+            "uint8", "uint16", "uint32", "uint64",
+            "int8", "int16", "int32", "int64",
+            "float32", "float64",
+            "bytes", "string",
+            "array", "struct", "union", "enum",
+            "varint", "zigzag",
+            "bitfield", "padding",
+            "custom"
+          ]
+        },
+        "size": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "string", "description": "Reference to size field or expression"}
+          ]
+        },
+        "count": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string"}
+          ],
+          "description": "For arrays, number of elements"
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition expression for optional fields"
+        },
+        "encoding": {
+          "type": "string",
+          "description": "String encoding for string fields"
+        },
+        "terminator": {
+          "type": "string",
+          "description": "Terminator for variable-length fields"
+        },
+        "enum_values": {
+          "type": "object",
+          "additionalProperties": {"type": "integer"},
+          "description": "For enum types, name-to-value mapping"
+        },
+        "nested": {
+          "$ref": "#/$defs/BinaryStructure",
+          "description": "Nested structure definition"
+        },
+        "doc": {"type": "string"}
+      }
+    },
+    "EncodingSpec": {
+      "type": "object",
+      "description": "Character/byte encoding specification",
+      "properties": {
+        "default": {
+          "type": "string",
+          "default": "utf-8",
+          "examples": ["utf-8", "utf-16", "utf-32", "ascii", "iso-8859-1", "binary"]
+        },
+        "supported": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of supported encodings"
+        },
+        "bom": {
+          "type": "string",
+          "enum": ["required", "optional", "forbidden", "detect"],
+          "description": "Byte Order Mark handling"
+        },
+        "newline": {
+          "type": "string",
+          "enum": ["lf", "crlf", "cr", "any", "preserve"],
+          "description": "Newline handling"
+        },
+        "null_handling": {
+          "type": "string",
+          "enum": ["allowed", "forbidden", "escape"],
+          "description": "How to handle null bytes"
+        }
+      }
+    },
+    "StreamingSpec": {
+      "type": "object",
+      "description": "Streaming parsing capabilities",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["chunked", "incremental", "sax-style", "pull", "push"],
+          "description": "Streaming mode"
+        },
+        "chunk_boundaries": {
+          "type": "string",
+          "enum": ["any", "line", "record", "message", "frame", "custom"],
+          "description": "Where chunks can be split"
+        },
+        "minimum_chunk_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "buffering": {
+          "type": "object",
+          "properties": {
+            "required": {"type": "boolean"},
+            "max_buffer_size": {"type": "integer"},
+            "lookahead": {"type": "integer"}
+          }
+        },
+        "backtracking": {
+          "type": "boolean",
+          "description": "Whether backtracking is needed"
+        },
+        "resumable": {
+          "type": "boolean",
+          "description": "Can parsing be paused and resumed"
+        }
+      }
+    },
+    "FramingSpec": {
+      "type": "object",
+      "description": "Message framing for protocols",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "length-prefixed",
+            "delimiter",
+            "fixed-size",
+            "self-describing",
+            "header-based",
+            "custom"
+          ]
+        },
+        "length_field": {
+          "type": "object",
+          "properties": {
+            "offset": {"type": "integer"},
+            "size": {"type": "integer"},
+            "endianness": {"type": "string", "enum": ["big", "little"]},
+            "includes_header": {"type": "boolean"}
+          }
+        },
+        "delimiter": {
+          "type": "object",
+          "properties": {
+            "start": {"type": "string"},
+            "end": {"type": "string"},
+            "escape": {"type": "string"}
+          }
+        }
+      }
+    },
+    "InputConstraints": {
+      "type": "object",
+      "description": "Constraints on input",
+      "properties": {
+        "max_size": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "string", "enum": ["unlimited"]}
+          ],
+          "description": "Maximum input size in bytes"
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum nesting depth"
+        },
+        "max_width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of siblings at any level"
+        },
+        "max_string_length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_number_magnitude": {
+          "type": "number"
+        },
+        "max_array_length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_object_keys": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "custom": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Custom constraints"
+        }
+      }
+    },
+    "PreprocessingStep": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "decode",
+            "decompress",
+            "decrypt",
+            "normalize",
+            "strip-bom",
+            "convert-newlines",
+            "unescape",
+            "custom"
+          ]
+        },
+        "algorithm": {"type": "string"},
+        "options": {"type": "object"}
+      }
+    },
+    "OutputDefinition": {
+      "type": "object",
+      "description": "Definition of parser output",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/OutputFormat"
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/OutputFormat"},
+          "description": "Alternative output formats"
+        },
+        "errors": {
+          "$ref": "#/$defs/ErrorFormat"
+        },
+        "events": {
+          "$ref": "#/$defs/EventStream",
+          "description": "For SAX-style event output"
+        },
+        "partial_results": {
+          "type": "boolean",
+          "description": "Whether partial results are available on error"
+        }
+      }
+    },
+    "OutputFormat": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ast",
+            "cst",
+            "dom",
+            "object",
+            "events",
+            "tokens",
+            "bytes",
+            "custom"
+          ]
+        },
+        "schema": {
+          "oneOf": [
+            {"$ref": "#/$defs/InlineSchema"},
+            {"type": "string", "format": "uri-reference"}
+          ],
+          "description": "Schema defining the output structure"
+        },
+        "schema_type": {
+          "type": "string",
+          "enum": ["json-schema", "typescript", "protobuf", "avro", "custom"]
+        },
+        "node_types": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/NodeType"},
+          "description": "AST/CST node type definitions"
+        },
+        "preserves": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["whitespace", "comments", "positions", "trivia", "original-text"]
+          },
+          "description": "What information is preserved in output"
+        }
+      }
+    },
+    "InlineSchema": {
+      "type": "object",
+      "description": "Inline JSON Schema or equivalent"
+    },
+    "NodeType": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {
+          "type": "string",
+          "enum": ["node", "token", "trivia", "error"]
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string"},
+              "multiple": {"type": "boolean"},
+              "optional": {"type": "boolean"}
+            }
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "ErrorFormat": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "oneOf": [
+            {"$ref": "#/$defs/InlineSchema"},
+            {"type": "string", "format": "uri-reference"}
+          ]
+        },
+        "codes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ErrorCode"},
+          "description": "Defined error codes"
+        },
+        "includes_position": {"type": "boolean", "default": true},
+        "includes_context": {"type": "boolean", "default": false},
+        "includes_suggestions": {"type": "boolean", "default": false}
+      }
+    },
+    "ErrorCode": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "severity": {
+          "type": "string",
+          "enum": ["error", "warning", "info", "hint"]
+        },
+        "category": {"type": "string"},
+        "recoverable": {"type": "boolean"}
+      }
+    },
+    "EventStream": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/EventType"}
+        },
+        "ordering": {
+          "type": "string",
+          "enum": ["depth-first", "breadth-first", "document-order"]
+        }
+      }
+    },
+    "EventType": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "data": {"$ref": "#/$defs/InlineSchema"}
+      }
+    },
+    "ParserMode": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "default": {"type": "boolean"},
+        "options": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "overrides": {
+          "type": "object",
+          "description": "Overrides for parser behavior in this mode"
+        }
+      }
+    },
+    "ParserFeatures": {
+      "type": "object",
+      "description": "Optional parser features",
+      "properties": {
+        "validation": {
+          "type": "object",
+          "properties": {
+            "schema_validation": {"type": "boolean"},
+            "semantic_validation": {"type": "boolean"},
+            "custom_validators": {"type": "boolean"}
+          }
+        },
+        "transformation": {
+          "type": "object",
+          "properties": {
+            "normalization": {"type": "boolean"},
+            "canonicalization": {"type": "boolean"},
+            "pretty_print": {"type": "boolean"},
+            "minification": {"type": "boolean"}
+          }
+        },
+        "querying": {
+          "type": "object",
+          "properties": {
+            "xpath": {"type": "boolean"},
+            "jsonpath": {"type": "boolean"},
+            "css_selectors": {"type": "boolean"},
+            "custom_query_language": {"type": "string"}
+          }
+        },
+        "modification": {
+          "type": "object",
+          "properties": {
+            "mutable_ast": {"type": "boolean"},
+            "incremental_updates": {"type": "boolean"},
+            "serialization": {"type": "boolean"}
+          }
+        },
+        "interop": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Interoperable formats (can convert to/from)"
+        }
+      }
+    },
+    "ErrorHandling": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["fail-fast", "recover", "best-effort", "configurable"]
+        },
+        "recovery_strategies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "skip-token",
+              "insert-token",
+              "delete-token",
+              "sync-to-delimiter",
+              "panic-mode",
+              "error-productions"
+            ]
+          }
+        },
+        "max_errors": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "error_tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Percentage of input that can be malformed"
+        }
+      }
+    },
+    "StateMachine": {
+      "type": "object",
+      "description": "Explicit state machine definition (for protocol parsers)",
+      "properties": {
+        "states": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/State"}
+        },
+        "initial_state": {"type": "string"},
+        "terminal_states": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "transitions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Transition"}
+        }
+      }
+    },
+    "State": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "entry_action": {"type": "string"},
+        "exit_action": {"type": "string"}
+      }
+    },
+    "Transition": {
+      "type": "object",
+      "required": ["from", "to", "trigger"],
+      "properties": {
+        "from": {"type": "string"},
+        "to": {"type": "string"},
+        "trigger": {"type": "string"},
+        "guard": {"type": "string"},
+        "action": {"type": "string"}
+      }
+    },
+    "ParserDependency": {
+      "type": "object",
+      "required": ["spec_id"],
+      "properties": {
+        "spec_id": {"type": "string", "format": "uri"},
+        "version": {"type": "string"},
+        "usage": {
+          "type": "string",
+          "enum": ["embedded", "preprocessing", "subparser", "validation"]
+        },
+        "optional": {"type": "boolean"}
+      }
+    },
+    "ConformanceSuite": {
+      "type": "object",
+      "description": "Conformance test suite",
+      "properties": {
+        "version": {"$ref": "#/$defs/SemanticVersion"},
+        "imports": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TestImport"},
+          "description": "Import external test suites"
+        },
+        "test_vectors": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TestVector"}
+        },
+        "test_groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TestGroup"}
+        },
+        "property_tests": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PropertyTest"}
+        },
+        "fuzzing": {
+          "$ref": "#/$defs/FuzzingConfig"
+        },
+        "benchmarks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/BenchmarkCase"}
+        }
+      }
+    },
+    "TestImport": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "type": {
+          "type": "string",
+          "description": "Test suite format"
+        },
+        "version": {"type": "string"},
+        "filter": {
+          "type": "object",
+          "properties": {
+            "include": {"type": "array", "items": {"type": "string"}},
+            "exclude": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "TestVector": {
+      "type": "object",
+      "required": ["id", "input"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "category": {
+          "type": "string",
+          "enum": ["valid", "invalid", "edge-case", "security", "performance", "regression"]
+        },
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "priority": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "input": {"$ref": "#/$defs/TestInput"},
+        "expected": {"$ref": "#/$defs/TestExpectation"},
+        "mode": {
+          "type": "string",
+          "description": "Parser mode for this test"
+        },
+        "options": {
+          "type": "object",
+          "description": "Parser options for this test"
+        },
+        "skip_reason": {
+          "type": "string",
+          "description": "Reason for skipping this test"
+        },
+        "references": {
+          "type": "array",
+          "items": {"type": "string", "format": "uri"}
+        }
+      }
+    },
+    "TestInput": {
+      "type": "object",
+      "properties": {
+        "inline": {"type": "string"},
+        "inline_base64": {"type": "string"},
+        "inline_hex": {"type": "string"},
+        "file": {"type": "string", "format": "uri-reference"},
+        "url": {"type": "string", "format": "uri"},
+        "generator": {"$ref": "#/$defs/InputGenerator"}
+      }
+    },
+    "InputGenerator": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["repeat", "range", "random", "custom"]
+        },
+        "params": {"type": "object"}
+      }
+    },
+    "TestExpectation": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "object",
+          "properties": {
+            "ast": {},
+            "output": {},
+            "tokens": {"type": "array"},
+            "events": {"type": "array"},
+            "properties": {"type": "object"}
+          }
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "string"},
+            "codes": {"type": "array", "items": {"type": "string"}},
+            "message_pattern": {"type": "string"},
+            "position": {"$ref": "#/$defs/Position"},
+            "count": {"type": "integer"}
+          }
+        },
+        "either": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TestExpectation"},
+          "description": "Any of these expectations is acceptable"
+        },
+        "implementation_defined": {
+          "type": "boolean",
+          "description": "Result is implementation-defined (just document behavior)"
+        }
+      }
+    },
+    "Position": {
+      "type": "object",
+      "properties": {
+        "offset": {"type": "integer", "minimum": 0},
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    },
+    "TestGroup": {
+      "type": "object",
+      "required": ["id", "tests"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "setup": {"type": "object"},
+        "teardown": {"type": "object"},
+        "tests": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TestVector"}
+        }
+      }
+    },
+    "PropertyTest": {
+      "type": "object",
+      "required": ["id", "property"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "property": {
+          "type": "string",
+          "enum": [
+            "roundtrip",
+            "idempotent",
+            "no-crash",
+            "deterministic",
+            "associative",
+            "commutative",
+            "custom"
+          ]
+        },
+        "custom_property": {"type": "string"},
+        "generator": {"$ref": "#/$defs/InputGenerator"},
+        "iterations": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer"},
+        "shrinking": {"type": "boolean", "default": true}
+      }
+    },
+    "FuzzingConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "min_iterations": {"type": "integer", "minimum": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "corpus": {
+          "type": "array",
+          "items": {"type": "string", "format": "uri-reference"}
+        },
+        "dictionary": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "strategies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "mutation",
+              "generation",
+              "grammar-based",
+              "coverage-guided",
+              "differential"
+            ]
+          }
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["crash", "hang", "memory", "undefined-behavior", "logic-error"]
+          }
+        }
+      }
+    },
+    "BenchmarkCase": {
+      "type": "object",
+      "required": ["id", "input"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "category": {
+          "type": "string",
+          "enum": ["throughput", "latency", "memory", "scalability"]
+        },
+        "input": {"$ref": "#/$defs/TestInput"},
+        "iterations": {"type": "integer"},
+        "warmup_iterations": {"type": "integer"},
+        "expected_metrics": {
+          "type": "object",
+          "properties": {
+            "min_throughput_mbps": {"type": "number"},
+            "max_latency_us": {"type": "number"},
+            "max_memory_mb": {"type": "number"}
+          }
+        }
+      }
+    },
+    "QualityRequirements": {
+      "type": "object",
+      "description": "Quality requirements for implementations",
+      "properties": {
+        "conformance": {
+          "type": "object",
+          "properties": {
+            "minimum_level": {
+              "type": "string",
+              "enum": ["level_0", "level_1", "level_2", "level_3"]
+            },
+            "required_tests": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "required_categories": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "performance": {
+          "type": "object",
+          "properties": {
+            "throughput": {
+              "type": "object",
+              "properties": {
+                "minimum_mbps": {"type": "number"},
+                "target_mbps": {"type": "number"}
+              }
+            },
+            "latency": {
+              "type": "object",
+              "properties": {
+                "p50_max_us": {"type": "number"},
+                "p99_max_us": {"type": "number"},
+                "p999_max_us": {"type": "number"}
+              }
+            },
+            "memory": {
+              "type": "object",
+              "properties": {
+                "max_multiplier": {"type": "number"},
+                "max_absolute_mb": {"type": "number"}
+              }
+            },
+            "startup": {
+              "type": "object",
+              "properties": {
+                "max_cold_start_ms": {"type": "number"},
+                "max_warm_start_ms": {"type": "number"}
+              }
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "vulnerability_tolerance": {
+              "type": "object",
+              "properties": {
+                "critical": {"type": "integer", "minimum": 0},
+                "high": {"type": "integer", "minimum": 0},
+                "medium": {"type": "integer"},
+                "low": {"type": "integer"}
+              }
+            },
+            "required_protections": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "forbidden_patterns": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "maintainability": {
+          "type": "object",
+          "properties": {
+            "documentation": {
+              "type": "string",
+              "enum": ["none", "basic", "full"]
+            },
+            "test_coverage_percent": {"type": "number", "minimum": 0, "maximum": 100},
+            "max_complexity": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "Extensions": {
+      "type": "object",
+      "description": "Extension point for custom/vendor-specific data",
+      "properties": {
+        "x-vendor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "SemanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "License": {
+      "type": "object",
+      "properties": {
+        "spdx": {
+          "type": "string",
+          "description": "SPDX license identifier"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "text": {"type": "string"}
+      }
+    },
+    "Author": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "email": {"type": "string", "format": "email"},
+        "url": {"type": "string", "format": "uri"},
+        "organization": {"type": "string"}
+      }
+    },
+    "Reference": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["rfc", "iso", "ietf", "w3c", "ecma", "ieee", "itu", "ansi", "oasis", "osi", "academic", "book", "url", "other"]
+        },
+        "identifier": {"type": "string"},
+        "title": {"type": "string"},
+        "url": {"type": "string", "format": "uri"},
+        "section": {"type": "string"},
+        "date": {"type": "string", "format": "date"},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "normative": {"type": "boolean", "default": false}
+      }
+    },
+    "RelatedSpec": {
+      "type": "object",
+      "required": ["spec_id", "relationship"],
+      "properties": {
+        "spec_id": {"type": "string", "format": "uri"},
+        "relationship": {
+          "type": "string",
+          "enum": ["extends", "implements", "compatible", "alternative", "requires", "recommends"]
+        },
+        "description": {"type": "string"}
+      }
+    }
+  }
+}
